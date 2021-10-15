@@ -1,3 +1,4 @@
+use crate::config::SparkConfig;
 use crate::scheduler::LocalScheduler;
 use crate::SparkContext;
 
@@ -31,6 +32,6 @@ impl SparkSessionBuilder {
         // let scheduler = match self.master {
         //     Master::Local { cores } => LocalScheduler::new(cores),
         // };
-        SparkSession { scx: SparkContext::new() }
+        SparkSession { scx: SparkContext::new(SparkConfig::default()) }
     }
 }

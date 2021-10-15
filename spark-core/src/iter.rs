@@ -1,1 +1,1 @@
-pub type SparkIterator<T> = Box<dyn Iterator<Item = T>>;
+pub type SparkIterator<T> = Box<dyn Iterator<Item = T> + Send>;

@@ -15,7 +15,8 @@ impl<R, F, T> Rdd for Map<R, F>
 where
     R: Rdd,
     R::Output: 'static,
-    F: Fn(R::Output) -> T + 'static,
+    T: Datum,
+    F: Fn(R::Output) -> T + Send + 'static,
 {
     type Output = T;
 

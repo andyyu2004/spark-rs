@@ -1,4 +1,5 @@
 [workspace]
 members = [
-    "spark-core"
+    "spark-core",
+    "spark-ds",
 ]

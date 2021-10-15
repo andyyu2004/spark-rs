@@ -1,7 +1,8 @@
-#![feature(new_uninit)]
+#![feature(new_uninit, once_cell, trait_alias)]
 
 pub mod rdd;
 
+mod config;
 mod context;
 mod data;
 mod dependency;
@@ -18,3 +19,6 @@ pub use error::{SparkError, SparkResult};
 pub use iter::*;
 pub use partition::*;
 pub use session::*;
+
+#[macro_use]
+extern crate async_trait;
