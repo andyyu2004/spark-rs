@@ -49,7 +49,7 @@ impl SparkContext {
 
     pub async fn run_rdd<T: Datum, U>(
         self: Arc<Self>,
-        rdd: impl Rdd<Output = T>,
+        rdd: Arc<impl Rdd<Output = T>>,
         partitions: Partitions,
         f: impl PartitionMapper<T, U>,
         handler: impl HandlerFn<U>,
@@ -59,7 +59,7 @@ impl SparkContext {
 
     pub async fn collect_rdd<T: Datum, U>(
         self: Arc<Self>,
-        rdd: impl Rdd<Output = T>,
+        rdd: Arc<impl Rdd<Output = T>>,
         f: impl PartitionMapper<T, U>,
     ) -> SparkResult<Vec<U>> {
         let n = rdd.partitions().len();

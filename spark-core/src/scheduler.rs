@@ -65,7 +65,7 @@ impl DagScheduler {
 
     pub(crate) async fn run<T: Datum, U>(
         self: Arc<Self>,
-        rdd: impl Rdd<Output = T>,
+        rdd: Arc<impl Rdd<Output = T>>,
         partitions: Partitions,
         f: impl PartitionMapper<T, U>,
         handler: impl HandlerFn<U>,
@@ -77,7 +77,7 @@ impl DagScheduler {
 
     pub(crate) async fn submit<T: Datum, U>(
         self: Arc<Self>,
-        rdd: impl Rdd<Output = T>,
+        rdd: Arc<impl Rdd<Output = T>>,
         partitions: Partitions,
         f: impl PartitionMapper<T, U>,
         handler: impl HandlerFn<U>,
@@ -85,25 +85,28 @@ impl DagScheduler {
         let job_id = self.next_job_id();
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         Arc::clone(&self).spawn_event_loop_for_job(rx);
-        let _todo = tx.send(SchedulerEvent::JobSubmitted { job_id, rdd: Box::new(rdd) });
+        let _handle_error = tx.send(SchedulerEvent::JobSubmitted { job_id, rdd });
         Ok(JobHandle::new(self, job_id, handler))
     }
 
-    fn spawn_event_loop_for_job<T: Datum>(self: Arc<Self>, mut rx: SchedulerEventReceiver<T>) {
+    fn spawn_event_loop_for_job<T: Datum>(self: Arc<Self>, rx: SchedulerEventReceiver<T>) {
         std::thread::spawn(|| self.start_event_loop_for_job(rx));
     }
 
     #[tokio::main(flavor = "current_thread")]
     async fn start_event_loop_for_job<T>(self: Arc<Self>, mut rx: SchedulerEventReceiver<T>) {
         while let Some(event) = rx.recv().await {
-            self.handle_event(event)
+            self.handle_event(event).await
         }
     }
 
-    fn handle_event<T>(&self, event: SchedulerEvent<T>) {
+    async fn handle_event<T>(&self, event: SchedulerEvent<T>) {
         match event {
-            SchedulerEvent::JobSubmitted { .. } => todo!(),
+            SchedulerEvent::JobSubmitted { job_id, rdd } => self.handle_job_submitted(job_id, rdd),
         }
+    }
+
+    fn handle_job_submitted<T>(&self, job_id: JobId, rdd: Arc<dyn Rdd<Output = T>>) {
     }
 
     fn next_stage_id(&self) -> StageId {

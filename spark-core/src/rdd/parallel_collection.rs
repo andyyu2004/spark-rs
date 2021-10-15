@@ -41,12 +41,13 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
     }
 
     fn compute(
-        self,
+        self: Arc<Self>,
         _cx: TaskContext,
         idx: PartitionIndex,
     ) -> Box<dyn Iterator<Item = Self::Output>> {
         let partition = &self.partitions[idx.index()];
         let data = Arc::clone(&partition.data);
-        self.scx.interruptible_iterator((0..data.len()).map(move |i| data[i].clone()))
+        let iter = (0..data.len()).map(move |i| data[i].clone());
+        Arc::clone(&self.scx).interruptible_iterator(iter)
     }
 }

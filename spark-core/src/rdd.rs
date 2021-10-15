@@ -7,8 +7,7 @@ use self::map::Map;
 use crate::*;
 use std::sync::Arc;
 
-#[async_trait]
-pub trait Rdd: Send + 'static {
+pub trait Rdd: Send + Sync + 'static {
     type Output: Datum;
 
     fn spark(&self) -> Arc<SparkContext>;
@@ -18,24 +17,27 @@ pub trait Rdd: Send + 'static {
     fn partitions(&self) -> Partitions;
 
     fn compute(
-        self,
+        self: Arc<Self>,
         ctxt: TaskContext,
         split: PartitionIndex,
     ) -> Box<dyn Iterator<Item = Self::Output>>;
+}
 
-    fn map<F>(self, f: F) -> Map<Self, F>
-    where
-        Self: Sized,
-    {
+#[async_trait]
+trait RddExt: Rdd + Sized {
+    fn map<F>(self: Arc<Self>, f: F) -> Map<Self, F> {
         Map::new(self, f)
     }
 
-    async fn collect(self) -> SparkResult<Vec<Self::Output>>
-    where
-        Self: Sized,
-    {
+    async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Output>> {
         let spark = self.spark();
         let partition_iterators = spark.collect_rdd(self, |_cx, iter| iter).await?;
         Ok(partition_iterators.into_iter().flatten().collect())
     }
+}
+
+impl<R: Rdd> RddExt for R {
+}
+
+fn _rdd_is_dyn_safe<T>(_rdd: Box<dyn Rdd<Output = T>>) {
 }
