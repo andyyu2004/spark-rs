@@ -1,6 +1,8 @@
 use super::*;
 use std::sync::Arc;
 
+newtype_index!(JobId);
+
 pub struct JobHandle<T> {
     scheduler: Arc<DagScheduler>,
     pd: std::marker::PhantomData<T>,

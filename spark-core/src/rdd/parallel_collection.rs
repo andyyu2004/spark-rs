@@ -42,6 +42,10 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
 impl<T: Datum> TypedRdd for ParallelCollection<T> {
     type Output = T;
 
+    fn as_untyped(self: Arc<Self>) -> RddRef {
+        RddRef::from_inner(self)
+    }
+
     fn compute(
         self: Arc<Self>,
         _cx: TaskContext,

@@ -1,11 +1,16 @@
 mod event;
 mod job;
+mod stage;
 
 use self::event::*;
-use self::job::JobHandle;
-use crate::rdd::{TypedRdd, TypedRddRef};
+use self::job::*;
+use self::stage::*;
+use crate::rdd::{RddRef, TypedRdd, TypedRddRef};
 use crate::*;
-use indexed_vec::{newtype_index, Idx};
+use dashmap::DashMap;
+use indexed_vec::{newtype_index, Idx, IndexVec};
+use spark_ds::hash::IdxHash;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -47,19 +52,23 @@ impl LocalScheduler {
 
 pub struct DistributedScheduler;
 
-newtype_index!(JobId);
-newtype_index!(StageId);
-
 static_assertions::assert_impl_all!(Arc<DagScheduler>: Send, Sync);
 
 pub struct DagScheduler {
     job_idx: AtomicUsize,
     stage_idx: AtomicUsize,
+    job_txs: IndexVec<JobId, SchedulerEventSender>,
+    shuffle_id_to_map_stage: DashMap<ShuffleId, ShuffleMapStage, IdxHash>,
 }
 
 impl DagScheduler {
     pub fn new() -> Self {
-        Self { job_idx: Default::default(), stage_idx: Default::default() }
+        Self {
+            job_txs: Default::default(),
+            job_idx: Default::default(),
+            stage_idx: Default::default(),
+            shuffle_id_to_map_stage: Default::default(),
+        }
     }
 
     pub(crate) async fn run<T, U>(
@@ -91,11 +100,10 @@ impl DagScheduler {
     {
         let job_id = self.next_job_id();
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let jobcx = JobContext::new(Arc::clone(&self), rx);
+        let jobcx = JobContext::new(Arc::clone(&self), rx, mapper);
         let _handle_error = tx.send(SchedulerEvent::JobSubmitted(JobSubmittedEvent {
-            rdd,
+            rdd: rdd.as_untyped(),
             partitions,
-            mapper: Box::new(mapper),
             job_id,
         }));
         Ok(JobHandle::new(self, job_id, handler))
@@ -112,26 +120,31 @@ impl DagScheduler {
 
 pub struct JobContext<T, U> {
     scheduler: Arc<DagScheduler>,
-    rx: SchedulerEventReceiver<T, U>,
+    rx: SchedulerEventReceiver,
+    mapper: PartitionMapperRef<T, U>,
 }
 
 impl<T: Datum, U: Send + 'static> JobContext<T, U> {
-    pub fn new(scheduler: Arc<DagScheduler>, rx: SchedulerEventReceiver<T, U>) -> Self {
-        Self { scheduler, rx }
+    pub fn new(
+        scheduler: Arc<DagScheduler>,
+        rx: SchedulerEventReceiver,
+        mapper: PartitionMapperRef<T, U>,
+    ) -> Self {
+        Self { scheduler, rx, mapper }
     }
 
-    fn start(self, rx: SchedulerEventReceiver<T, U>) {
+    fn start(self, rx: SchedulerEventReceiver) {
         std::thread::spawn(|| self.event_loop(rx));
     }
 
     #[tokio::main(flavor = "current_thread")]
-    async fn event_loop(self, mut rx: SchedulerEventReceiver<T, U>) {
+    async fn event_loop(self, mut rx: SchedulerEventReceiver) {
         while let Some(event) = rx.recv().await {
             self.handle_event(event).await
         }
     }
 
-    async fn handle_event(&self, event: SchedulerEvent<T, U>) {
+    async fn handle_event(&self, event: SchedulerEvent) {
         match event {
             SchedulerEvent::JobSubmitted(event) => self.handle_job_submitted(event),
         }
@@ -139,18 +152,53 @@ impl<T: Datum, U: Send + 'static> JobContext<T, U> {
 
     fn handle_job_submitted(
         &self,
-        JobSubmittedEvent { rdd, partitions, mapper, job_id }: JobSubmittedEvent<T, U>,
+        JobSubmittedEvent { rdd, partitions, job_id }: JobSubmittedEvent,
     ) {
-        self.create_result_stage(rdd, partitions, mapper, job_id);
+        self.create_result_stage(rdd, partitions, job_id);
     }
 
     fn create_result_stage(
         &self,
-        rdd: TypedRddRef<T>,
+        rdd: RddRef,
         partitions: Partitions,
-        mapper: PartitionMapperRef<T, U>,
         job_id: JobId,
-    ) {
-        todo!()
+    ) -> ResultStage {
+        let shuffle_deps = rdd.immediate_shuffle_dependencies();
+        let parents = self.create_parent_stages(job_id, &shuffle_deps);
+        let stage_id = self.scheduler.next_stage_id();
+        ResultStage { stage_id, rdd, partitions, parents, job_id }
+    }
+
+    fn create_shuffle_map_stage(&self, job_id: JobId, shuffle_dep: &ShuffleDependency) -> StageId {
+        let shuffle_id = shuffle_dep.shuffle_id;
+        if let Some(stage) = self.scheduler.shuffle_id_to_map_stage.get(&shuffle_id) {
+            return stage.stage_id;
+        }
+
+        let rdd = shuffle_dep.rdd();
+        let parent_deps = rdd.immediate_shuffle_dependencies();
+        for shuffle_dep in &parent_deps {
+            self.create_shuffle_map_stage(job_id, shuffle_dep);
+        }
+
+        let stage_id = self.scheduler.next_stage_id();
+        let shuffle_stage = ShuffleMapStage {
+            rdd,
+            stage_id,
+            parents: self.create_parent_stages(job_id, &parent_deps),
+        };
+        self.scheduler.shuffle_id_to_map_stage.insert(shuffle_id, shuffle_stage);
+        stage_id
+    }
+
+    fn create_parent_stages(
+        &self,
+        job_id: JobId,
+        shuffle_deps: &HashSet<ShuffleDependency>,
+    ) -> Vec<StageId> {
+        shuffle_deps
+            .iter()
+            .map(|shuffle_dep| self.create_shuffle_map_stage(job_id, shuffle_dep))
+            .collect()
     }
 }

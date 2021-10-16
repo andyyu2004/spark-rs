@@ -33,6 +33,10 @@ where
 {
     type Output = T;
 
+    fn as_untyped(self: Arc<Self>) -> RddRef {
+        RddRef::from_inner(self)
+    }
+
     fn compute(
         self: Arc<Self>,
         ctxt: TaskContext,

@@ -25,9 +25,9 @@ pub enum NarrowDependency {
 }
 
 impl NarrowDependency {
-    fn rdd(&self) -> RddRef {
+    pub fn rdd(&self) -> RddRef {
         match self {
-            NarrowDependency::OneToOne(dep) => Arc::clone(&dep.rdd),
+            NarrowDependency::OneToOne(dep) => dep.rdd.clone(),
         }
     }
 }
@@ -36,13 +36,14 @@ pub struct OneToOneDependency {
     rdd: RddRef,
 }
 
+#[derive(Hash, Clone, PartialEq, Eq)]
 pub struct ShuffleDependency {
-    rdd: RddRef,
-    shuffle_id: ShuffleId,
+    pub(crate) rdd: RddRef,
+    pub(crate) shuffle_id: ShuffleId,
 }
 
 impl ShuffleDependency {
-    fn rdd(&self) -> RddRef {
-        Arc::clone(&self.rdd)
+    pub fn rdd(&self) -> RddRef {
+        RddRef::clone(&self.rdd)
     }
 }
