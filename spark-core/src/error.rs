@@ -1,3 +1,3 @@
 pub type SparkResult<T> = Result<T, SparkError>;
 
-pub enum SparkError {}
+pub type SparkError = anyhow::Error;

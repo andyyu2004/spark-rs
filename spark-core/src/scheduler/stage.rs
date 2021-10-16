@@ -1,5 +1,4 @@
 use super::*;
-use std::any::Any;
 
 newtype_index!(StageId);
 

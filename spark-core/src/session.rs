@@ -1,5 +1,4 @@
 use crate::config::SparkConfig;
-use crate::scheduler::LocalScheduler;
 use crate::SparkContext;
 
 pub struct SparkSession {
@@ -29,9 +28,6 @@ impl Default for Master {
 
 impl SparkSessionBuilder {
     pub fn create(self) -> SparkSession {
-        // let scheduler = match self.master {
-        //     Master::Local { cores } => LocalScheduler::new(cores),
-        // };
         SparkSession { scx: SparkContext::new(SparkConfig::default()) }
     }
 }

@@ -1,11 +1,9 @@
 use crate::config::SparkConfig;
 use crate::rdd::*;
-use crate::scheduler::{DagScheduler, HandlerFn, PartitionMapper, TaskScheduler};
+use crate::scheduler::{DagScheduler, JobOutput, PartitionMapper, TaskScheduler};
 use crate::*;
-use indexed_vec::Idx;
 use std::cell::UnsafeCell;
 use std::lazy::SyncOnceCell;
-use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -52,13 +50,12 @@ impl SparkContext {
         rdd: TypedRddRef<T>,
         partitions: Partitions,
         f: impl PartitionMapper<T, U>,
-        handler: impl HandlerFn<U>,
-    ) -> SparkResult<()>
+    ) -> SparkResult<JobOutput<U>>
     where
         T: Datum,
         U: Send + 'static,
     {
-        self.dag_scheduler().run(rdd, partitions, f, handler).await
+        self.dag_scheduler().run(rdd, partitions, f).await
     }
 
     pub async fn collect_rdd<T, U>(
@@ -71,15 +68,8 @@ impl SparkContext {
         U: Send + 'static,
     {
         let n = rdd.partitions().len();
-
-        // SAFETY: Each index of `out` should be written to exactly once (once per partition)
-        let out = unsafe { SyncUnsafeCell::new(Box::<[U]>::new_uninit_slice(n)) };
-        let handler =
-            |i: PartitionIndex, data| unsafe { &mut *out.get() }[i.index()] = MaybeUninit::new(data);
-
-        self.run_rdd(rdd, 0..n, f, handler).await?;
-        // SAFETY: We initialized every element of `out` above
-        Ok(unsafe { out.into_inner().assume_init() }.into_vec())
+        let partition_results = self.run_rdd(rdd, 0..n, f).await;
+        todo!()
     }
 
     pub fn interruptible_iterator<T: Datum>(
