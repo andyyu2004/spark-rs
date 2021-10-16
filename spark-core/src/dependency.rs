@@ -1,16 +1,18 @@
-use crate::rdd::{Rdd, RddRef};
+use crate::rdd::RddRef;
 use indexed_vec::newtype_index;
 use std::sync::Arc;
 
 newtype_index!(ShuffleId);
 
-pub enum Dependency<T> {
-    Narrow(NarrowDependency<T>),
-    Shuffle(ShuffleDependency<T>),
+pub type Dependencies = Arc<Vec<Dependency>>;
+
+pub enum Dependency {
+    Narrow(NarrowDependency),
+    Shuffle(ShuffleDependency),
 }
 
-impl<T> Dependency<T> {
-    pub fn rdd(&self) -> RddRef<T> {
+impl Dependency {
+    pub fn rdd(&self) -> RddRef {
         match self {
             Dependency::Narrow(narrow) => narrow.rdd(),
             Dependency::Shuffle(shuffle) => shuffle.rdd(),
@@ -18,29 +20,29 @@ impl<T> Dependency<T> {
     }
 }
 
-pub enum NarrowDependency<T> {
-    OneToOne(OneToOneDependency<T>),
+pub enum NarrowDependency {
+    OneToOne(OneToOneDependency),
 }
 
-impl<T> NarrowDependency<T> {
-    fn rdd(&self) -> RddRef<T> {
+impl NarrowDependency {
+    fn rdd(&self) -> RddRef {
         match self {
             NarrowDependency::OneToOne(dep) => Arc::clone(&dep.rdd),
         }
     }
 }
 
-pub struct OneToOneDependency<T> {
-    rdd: RddRef<T>,
+pub struct OneToOneDependency {
+    rdd: RddRef,
 }
 
-pub struct ShuffleDependency<T> {
-    rdd: RddRef<T>,
+pub struct ShuffleDependency {
+    rdd: RddRef,
     shuffle_id: ShuffleId,
 }
 
-impl<T> ShuffleDependency<T> {
-    fn rdd(&self) -> RddRef<T> {
-        todo!()
+impl ShuffleDependency {
+    fn rdd(&self) -> RddRef {
+        Arc::clone(&self.rdd)
     }
 }

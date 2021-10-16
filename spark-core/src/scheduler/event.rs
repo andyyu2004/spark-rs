@@ -1,10 +1,17 @@
 use super::*;
-use crate::rdd::RddRef;
+use crate::rdd::TypedRddRef;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-pub(crate) type SchedulerEventSender<T> = UnboundedSender<SchedulerEvent<T>>;
-pub(crate) type SchedulerEventReceiver<T> = UnboundedReceiver<SchedulerEvent<T>>;
+pub(crate) type SchedulerEventSender<T, U> = UnboundedSender<SchedulerEvent<T, U>>;
+pub(crate) type SchedulerEventReceiver<T, U> = UnboundedReceiver<SchedulerEvent<T, U>>;
 
-pub enum SchedulerEvent<T> {
-    JobSubmitted { job_id: JobId, rdd: RddRef<T> },
+pub enum SchedulerEvent<T, U> {
+    JobSubmitted(JobSubmittedEvent<T, U>),
+}
+
+pub struct JobSubmittedEvent<T, U> {
+    pub(super) rdd: TypedRddRef<T>,
+    pub(crate) partitions: std::ops::Range<usize>,
+    pub(crate) mapper: PartitionMapperRef<T, U>,
+    pub(super) job_id: JobId,
 }

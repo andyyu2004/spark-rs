@@ -30,11 +30,11 @@ impl SparkContext {
     }
 
     #[inline(always)]
-    pub fn make_rdd<T: Datum>(self: Arc<Self>, data: &[T]) -> impl Rdd<Output = T> {
+    pub fn make_rdd<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Output = T> {
         self.parallelize(data)
     }
 
-    pub fn parallelize<T: Datum>(self: Arc<Self>, data: &[T]) -> impl Rdd<Output = T> {
+    pub fn parallelize<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Output = T> {
         let num_slices = self.task_scheduler().default_parallelism();
         self.parallelize_with_slices(data, num_slices)
     }
@@ -43,25 +43,33 @@ impl SparkContext {
         self: Arc<Self>,
         data: &[T],
         num_slices: usize,
-    ) -> impl Rdd<Output = T> {
+    ) -> impl TypedRdd<Output = T> {
         ParallelCollection::new(self, data, num_slices)
     }
 
-    pub async fn run_rdd<T: Datum, U>(
+    pub async fn run_rdd<T, U>(
         self: Arc<Self>,
-        rdd: Arc<impl Rdd<Output = T>>,
+        rdd: TypedRddRef<T>,
         partitions: Partitions,
         f: impl PartitionMapper<T, U>,
         handler: impl HandlerFn<U>,
-    ) -> SparkResult<()> {
+    ) -> SparkResult<()>
+    where
+        T: Datum,
+        U: Send + 'static,
+    {
         self.dag_scheduler().run(rdd, partitions, f, handler).await
     }
 
-    pub async fn collect_rdd<T: Datum, U>(
+    pub async fn collect_rdd<T, U>(
         self: Arc<Self>,
-        rdd: Arc<impl Rdd<Output = T>>,
+        rdd: TypedRddRef<T>,
         f: impl PartitionMapper<T, U>,
-    ) -> SparkResult<Vec<U>> {
+    ) -> SparkResult<Vec<U>>
+    where
+        T: Datum,
+        U: Send + 'static,
+    {
         let n = rdd.partitions().len();
 
         // SAFETY: Each index of `out` should be written to exactly once (once per partition)

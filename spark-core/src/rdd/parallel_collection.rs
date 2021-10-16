@@ -26,19 +26,21 @@ impl<T: Datum> ParallelCollection<T> {
 }
 
 impl<T: Datum> Rdd for ParallelCollection<T> {
-    type Output = T;
-
     fn spark(&self) -> Arc<SparkContext> {
         Arc::clone(&self.scx)
     }
 
-    fn dependencies(&self) -> &[Dependency<T>] {
-        &[]
+    fn dependencies(&self) -> Dependencies {
+        Default::default()
     }
 
     fn partitions(&self) -> Partitions {
         0..self.partitions.len()
     }
+}
+
+impl<T: Datum> TypedRdd for ParallelCollection<T> {
+    type Output = T;
 
     fn compute(
         self: Arc<Self>,

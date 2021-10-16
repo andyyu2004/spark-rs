@@ -11,26 +11,27 @@ impl<R, F> Map<R, F> {
     }
 }
 
-impl<R, F, T> Rdd for Map<R, F>
-where
-    R: Rdd + Sync,
-    R::Output: 'static,
-    T: Datum,
-    F: Fn(R::Output) -> T + Send + Sync + Clone + 'static,
-{
-    type Output = T;
-
+impl<R: TypedRdd, F: Datum> Rdd for Map<R, F> {
     fn spark(&self) -> Arc<SparkContext> {
         self.rdd.spark()
     }
 
-    fn dependencies(&self) -> &[Dependency<T>] {
+    fn dependencies(&self) -> Dependencies {
         todo!()
     }
 
     fn partitions(&self) -> Partitions {
         todo!()
     }
+}
+
+impl<R, F, T> TypedRdd for Map<R, F>
+where
+    R: TypedRdd,
+    T: Datum,
+    F: Fn(R::Output) -> T + Datum,
+{
+    type Output = T;
 
     fn compute(
         self: Arc<Self>,

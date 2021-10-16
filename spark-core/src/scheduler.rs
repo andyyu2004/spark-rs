@@ -3,11 +3,9 @@ mod job;
 
 use self::event::*;
 use self::job::JobHandle;
-use crate::rdd::{Rdd, RddRef};
+use crate::rdd::{TypedRdd, TypedRddRef};
 use crate::*;
 use indexed_vec::{newtype_index, Idx};
-use spark_ds::sync::OneThread;
-use std::cell::RefCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -15,7 +13,8 @@ use std::sync::Arc;
 /// It is passed the partition index and the output computation.
 pub trait HandlerFn<T> = FnOnce(PartitionIndex, T);
 
-pub trait PartitionMapper<T, U> = FnOnce(TaskContext, SparkIterator<T>) -> U;
+pub trait PartitionMapper<T, U> = FnOnce(TaskContext, SparkIterator<T>) -> U + Send + 'static;
+pub type PartitionMapperRef<T, U> = Box<dyn PartitionMapper<T, U>>;
 
 pub struct TaskScheduler {
     backend: Box<dyn TaskSchedulerBackend>,
@@ -41,7 +40,7 @@ impl LocalScheduler {
         Self { cores }
     }
 
-    pub fn run<T>(&self, rdd: impl Rdd<Output = T>) -> SparkResult<Vec<T>> {
+    pub fn run<T>(&self, rdd: impl TypedRdd<Output = T>) -> SparkResult<Vec<T>> {
         todo!()
     }
 }
@@ -63,50 +62,43 @@ impl DagScheduler {
         Self { job_idx: Default::default(), stage_idx: Default::default() }
     }
 
-    pub(crate) async fn run<T: Datum, U>(
+    pub(crate) async fn run<T, U>(
         self: Arc<Self>,
-        rdd: Arc<impl Rdd<Output = T>>,
+        rdd: TypedRddRef<T>,
         partitions: Partitions,
         f: impl PartitionMapper<T, U>,
         handler: impl HandlerFn<U>,
-    ) -> SparkResult<()> {
+    ) -> SparkResult<()>
+    where
+        T: Datum,
+        U: Send + 'static,
+    {
         assert!(!partitions.is_empty(), "handle empty partitions");
-        let handle = self.submit(rdd, partitions, f, handler).await?;
+        let handle = self.submit(rdd, partitions, Box::new(f), handler).await?;
         todo!()
     }
 
-    pub(crate) async fn submit<T: Datum, U>(
+    pub(crate) async fn submit<T, U>(
         self: Arc<Self>,
-        rdd: Arc<impl Rdd<Output = T>>,
+        rdd: TypedRddRef<T>,
         partitions: Partitions,
-        f: impl PartitionMapper<T, U>,
+        mapper: PartitionMapperRef<T, U>,
         handler: impl HandlerFn<U>,
-    ) -> SparkResult<JobHandle<U>> {
+    ) -> SparkResult<JobHandle<U>>
+    where
+        T: Datum,
+        U: Send + 'static,
+    {
         let job_id = self.next_job_id();
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        Arc::clone(&self).spawn_event_loop_for_job(rx);
-        let _handle_error = tx.send(SchedulerEvent::JobSubmitted { job_id, rdd });
+        let jobcx = JobContext::new(Arc::clone(&self), rx);
+        let _handle_error = tx.send(SchedulerEvent::JobSubmitted(JobSubmittedEvent {
+            rdd,
+            partitions,
+            mapper: Box::new(mapper),
+            job_id,
+        }));
         Ok(JobHandle::new(self, job_id, handler))
-    }
-
-    fn spawn_event_loop_for_job<T: Datum>(self: Arc<Self>, rx: SchedulerEventReceiver<T>) {
-        std::thread::spawn(|| self.start_event_loop_for_job(rx));
-    }
-
-    #[tokio::main(flavor = "current_thread")]
-    async fn start_event_loop_for_job<T>(self: Arc<Self>, mut rx: SchedulerEventReceiver<T>) {
-        while let Some(event) = rx.recv().await {
-            self.handle_event(event).await
-        }
-    }
-
-    async fn handle_event<T>(&self, event: SchedulerEvent<T>) {
-        match event {
-            SchedulerEvent::JobSubmitted { job_id, rdd } => self.handle_job_submitted(job_id, rdd),
-        }
-    }
-
-    fn handle_job_submitted<T>(&self, job_id: JobId, rdd: RddRef<T>) {
     }
 
     fn next_stage_id(&self) -> StageId {
@@ -115,5 +107,50 @@ impl DagScheduler {
 
     fn next_job_id(&self) -> JobId {
         JobId::new(self.job_idx.fetch_add(1, Ordering::SeqCst))
+    }
+}
+
+pub struct JobContext<T, U> {
+    scheduler: Arc<DagScheduler>,
+    rx: SchedulerEventReceiver<T, U>,
+}
+
+impl<T: Datum, U: Send + 'static> JobContext<T, U> {
+    pub fn new(scheduler: Arc<DagScheduler>, rx: SchedulerEventReceiver<T, U>) -> Self {
+        Self { scheduler, rx }
+    }
+
+    fn start(self, rx: SchedulerEventReceiver<T, U>) {
+        std::thread::spawn(|| self.event_loop(rx));
+    }
+
+    #[tokio::main(flavor = "current_thread")]
+    async fn event_loop(self, mut rx: SchedulerEventReceiver<T, U>) {
+        while let Some(event) = rx.recv().await {
+            self.handle_event(event).await
+        }
+    }
+
+    async fn handle_event(&self, event: SchedulerEvent<T, U>) {
+        match event {
+            SchedulerEvent::JobSubmitted(event) => self.handle_job_submitted(event),
+        }
+    }
+
+    fn handle_job_submitted(
+        &self,
+        JobSubmittedEvent { rdd, partitions, mapper, job_id }: JobSubmittedEvent<T, U>,
+    ) {
+        self.create_result_stage(rdd, partitions, mapper, job_id);
+    }
+
+    fn create_result_stage(
+        &self,
+        rdd: TypedRddRef<T>,
+        partitions: Partitions,
+        mapper: PartitionMapperRef<T, U>,
+        job_id: JobId,
+    ) {
+        todo!()
     }
 }
