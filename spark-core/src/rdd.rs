@@ -7,12 +7,14 @@ use self::map::Map;
 use crate::*;
 use std::sync::Arc;
 
+pub type RddRef<T> = Arc<dyn Rdd<Output = T>>;
+
 pub trait Rdd: Send + Sync + 'static {
     type Output: Datum;
 
     fn spark(&self) -> Arc<SparkContext>;
 
-    fn dependencies(&self) -> &[Dependency];
+    fn dependencies(&self) -> &[Dependency<Self::Output>];
 
     fn partitions(&self) -> Partitions;
 

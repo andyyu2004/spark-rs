@@ -3,7 +3,7 @@ mod job;
 
 use self::event::*;
 use self::job::JobHandle;
-use crate::rdd::Rdd;
+use crate::rdd::{Rdd, RddRef};
 use crate::*;
 use indexed_vec::{newtype_index, Idx};
 use spark_ds::sync::OneThread;
@@ -106,7 +106,7 @@ impl DagScheduler {
         }
     }
 
-    fn handle_job_submitted<T>(&self, job_id: JobId, rdd: Arc<dyn Rdd<Output = T>>) {
+    fn handle_job_submitted<T>(&self, job_id: JobId, rdd: RddRef<T>) {
     }
 
     fn next_stage_id(&self) -> StageId {

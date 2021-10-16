@@ -32,7 +32,7 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
         Arc::clone(&self.scx)
     }
 
-    fn dependencies(&self) -> &[Dependency] {
+    fn dependencies(&self) -> &[Dependency<T>] {
         &[]
     }
 

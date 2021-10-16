@@ -24,7 +24,7 @@ where
         self.rdd.spark()
     }
 
-    fn dependencies(&self) -> &[Dependency] {
+    fn dependencies(&self) -> &[Dependency<T>] {
         todo!()
     }
 
