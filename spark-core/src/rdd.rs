@@ -66,7 +66,7 @@ impl Hash for dyn Rdd {
 pub trait Rdd: Send + Sync + 'static {
     fn id(&self) -> RddId;
 
-    fn spark(&self) -> Arc<SparkContext>;
+    fn scx(&self) -> Arc<SparkContext>;
 
     fn dependencies(&self) -> Dependencies;
 
@@ -104,7 +104,7 @@ pub trait TypedRdd: Rdd {
     fn compute(
         self: Arc<Self>,
         ctxt: TaskContext,
-        split: PartitionIndex,
+        split: PartitionIdx,
     ) -> Box<dyn Iterator<Item = Self::Output>>;
 
     fn map<F>(self: Arc<Self>, f: F) -> Map<Self, F>
@@ -118,8 +118,8 @@ pub trait TypedRdd: Rdd {
 #[async_trait]
 trait RddAsyncExt: TypedRdd + Sized {
     async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Output>> {
-        let spark = self.spark();
-        let partition_iterators = spark.collect_rdd(self, |_cx, iter| iter).await?;
+        let scx = self.scx();
+        let partition_iterators = scx.collect_rdd(self, |_cx, iter| iter).await?;
         Ok(partition_iterators.into_iter().flatten().collect())
     }
 }

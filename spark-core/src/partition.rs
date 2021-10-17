@@ -1,5 +1,3 @@
-use std::ops::Range;
+indexed_vec::newtype_index!(PartitionIdx);
 
-indexed_vec::newtype_index!(PartitionIndex);
-
-pub type Partitions = Range<usize>;
+pub type Partitions = Vec<PartitionIdx>;

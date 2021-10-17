@@ -7,7 +7,7 @@ pub struct ParallelCollection<T> {
     scx: Arc<SparkContext>,
     rdd_id: RddId,
     partitions: Vec<ParallelCollectionPartition<T>>,
-    partition_indices: Vec<PartitionIndex>,
+    partition_indices: Vec<PartitionIdx>,
 }
 
 pub struct ParallelCollectionPartition<T> {
@@ -21,7 +21,7 @@ impl<T: Datum> ParallelCollection<T> {
             .chunks(data.len() / num_slices)
             .map(|chunk| ParallelCollectionPartition { data: Arc::new(chunk.to_vec()) })
             .collect::<Vec<_>>();
-        let partition_indices = (0..partitions.len()).map(PartitionIndex::new).collect();
+        let partition_indices = (0..partitions.len()).map(PartitionIdx::new).collect();
         let rdd_id = scx.next_rdd_id();
         Self { rdd_id, scx, partitions, partition_indices }
     }
@@ -32,7 +32,7 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
         self.rdd_id
     }
 
-    fn spark(&self) -> Arc<SparkContext> {
+    fn scx(&self) -> Arc<SparkContext> {
         Arc::clone(&self.scx)
     }
 
@@ -41,7 +41,7 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
     }
 
     fn partitions(&self) -> Partitions {
-        0..self.partitions.len()
+        (0..self.partitions.len()).map(PartitionIdx::new).collect()
     }
 }
 
@@ -55,7 +55,7 @@ impl<T: Datum> TypedRdd for ParallelCollection<T> {
     fn compute(
         self: Arc<Self>,
         _cx: TaskContext,
-        idx: PartitionIndex,
+        idx: PartitionIdx,
     ) -> Box<dyn Iterator<Item = Self::Output>> {
         let partition = &self.partitions[idx.index()];
         let data = Arc::clone(&partition.data);

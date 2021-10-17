@@ -80,7 +80,7 @@ impl SparkContext {
         U: Send + 'static,
     {
         let n = rdd.partitions().len();
-        let partition_results = self.run_rdd(rdd, 0..n, f).await;
+        let partition_results = self.run_rdd(rdd, (0..n).map(PartitionIdx::new).collect(), f).await;
         todo!()
     }
 
@@ -102,35 +102,4 @@ impl SparkContext {
         Box::new(InterruptibleIterator { iter })
     }
 }
-
-/// A wrapped `UnsafeCell` that is unsafely `Sync` if `V: Send`
-/// This can be used if there are additional invariants that make this safe
-struct SyncUnsafeCell<V> {
-    cell: UnsafeCell<V>,
-}
-
-impl<V> SyncUnsafeCell<V> {
-    pub unsafe fn new(value: V) -> Self {
-        Self { cell: UnsafeCell::new(value) }
-    }
-
-    pub fn into_inner(self) -> V {
-        self.cell.into_inner()
-    }
-}
-
-impl<V> Deref for SyncUnsafeCell<V> {
-    type Target = UnsafeCell<V>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.cell
-    }
-}
-
-unsafe impl<V: Send> Sync for SyncUnsafeCell<V> {
-}
-
-impl SparkContext {
-}
-
 pub struct TaskContext {}

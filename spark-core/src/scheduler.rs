@@ -1,25 +1,27 @@
 mod event;
 mod job;
 mod stage;
+mod task;
 
 pub use self::job::JobOutput;
 
 use self::event::*;
 use self::job::*;
 use self::stage::*;
+use self::task::*;
 use crate::rdd::{RddRef, TypedRddRef};
 use crate::*;
-use dashmap::{DashMap, DashSet};
+use dashmap::DashSet;
 use indexed_vec::{newtype_index, Idx};
-use spark_ds::hash::IdxHash;
-use spark_ds::sync::ConcurrentIndexVec;
+use spark_ds::sync::{ConcurrentIndexVec, MapRef};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::task::{JoinHandle, LocalSet};
 
-pub trait PartitionMapper<T, U> = FnOnce(TaskContext, SparkIterator<T>) -> U + Send + 'static;
-pub type PartitionMapperRef<T, U> = Box<dyn PartitionMapper<T, U>>;
+pub trait PartitionMapper<T, U> =
+    FnOnce(TaskContext, SparkIterator<T>) -> U + Send + Sync + 'static;
+pub type PartitionMapperRef<T, U> = Arc<dyn PartitionMapper<T, U>>;
 
 pub struct TaskScheduler {
     backend: Box<dyn TaskSchedulerBackend>,
@@ -40,10 +42,12 @@ pub struct DagScheduler {
     stage_idx: AtomicUsize,
     job_txs: ConcurrentIndexVec<JobId, SchedulerEventSender>,
     stages: ConcurrentIndexVec<StageId, Stage>,
-    active_jobs: ConcurrentIndexVec<JobId, Vec<ActiveJob>>,
+    active_jobs: ConcurrentIndexVec<JobId, ActiveJob>,
     shuffle_id_to_map_stage: ConcurrentIndexVec<ShuffleId, StageId>,
-    /// Map from `StageId` to the active jobs that require the stage
+    /// Map from `StageId` to all active jobs that require the stage
     stage_to_active_jobs: ConcurrentIndexVec<StageId, Vec<JobId>>,
+    /// Map from a `ResultStage` to its `ActiveJob`
+    result_stage_to_active_job: ConcurrentIndexVec<StageId, JobId>,
     waiting_stages: DashSet<StageId>,
     running_stages: DashSet<StageId>,
     failed_stages: DashSet<StageId>,
@@ -62,6 +66,7 @@ impl DagScheduler {
             waiting_stages: Default::default(),
             running_stages: Default::default(),
             failed_stages: Default::default(),
+            result_stage_to_active_job: Default::default(),
         }
     }
 
@@ -76,7 +81,7 @@ impl DagScheduler {
         U: Send + 'static,
     {
         assert!(!partitions.is_empty(), "handle empty partitions");
-        let handle = self.submit_job(rdd, partitions, Box::new(f)).await?;
+        let handle = self.submit_job(rdd, partitions, Arc::new(f)).await?;
         Ok(handle.join_handle.await?)
     }
 
@@ -102,55 +107,25 @@ impl DagScheduler {
         Ok(JobHandle::new(job_id, join_handle))
     }
 
-    /// Submits a stage to be executed
-    /// This is a noop if the stage already exists
-    fn submit_stage(&self, stage_id: StageId) {
-        if self.stage_exists(stage_id) {
-            return;
+    fn active_job(&self, stage: StageId) -> MapRef<'_, JobId, ActiveJob> {
+        let job_id = self.result_stage_to_active_job.get(stage);
+        self.active_jobs.get(*job_id)
+    }
+
+    fn find_uncomputed_partitions(&self, stage_id: StageId) -> Partitions {
+        let stage = self.stages.get(stage_id);
+        let active_job = self.active_job(stage_id);
+        match &stage.kind {
+            StageKind::ShuffleMap => todo!(),
+            StageKind::Result { partitions } => (0..partitions.len())
+                .filter(|&i| active_job.finished.contains(i))
+                .map(PartitionIdx::new)
+                .collect(),
         }
-
-        let oldest_active_job_id = match self.stage_to_active_jobs.get(stage_id).unwrap().first() {
-            Some(job_id) => job_id,
-            None => todo!("abort stage"),
-        };
-
-        self.submit_parent_stages(stage_id);
-        self.running_stages.insert(stage_id);
-        todo!()
     }
 
     fn stage_exists(&self, stage_id: StageId) -> bool {
         self.stages.contains_key(stage_id)
-    }
-
-    pub(crate) fn submit_parent_stages(&self, stage_id: StageId) {
-        let stage = &self.stages.get(stage_id).unwrap();
-        let mut rdds = vec![stage.rdd()];
-        let mut visited = HashSet::new();
-        while let Some(rdd) = rdds.pop() {
-            if visited.contains(&rdd.id()) {
-                continue;
-            }
-            visited.insert(rdd.id());
-            for dep in rdd.dependencies().iter() {
-                match dep {
-                    Dependency::Narrow(narrow_dep) => rdds.push(narrow_dep.rdd()),
-                    Dependency::Shuffle(shuffle_dep) => {
-                        let stage_id = self.create_shuffle_map_stage(stage.job_id, shuffle_dep);
-                        self.submit_stage(stage_id);
-                    }
-                }
-            }
-        }
-    }
-
-    fn handle_job_submitted(
-        &self,
-        JobSubmittedEvent { rdd, partitions, job_id }: JobSubmittedEvent,
-    ) {
-        let stage_id = self.create_result_stage(rdd, partitions, job_id);
-        self.create_active_job(job_id, stage_id);
-        self.submit_stage(stage_id);
     }
 
     fn create_result_stage(&self, rdd: RddRef, partitions: Partitions, job_id: JobId) -> StageId {
@@ -163,12 +138,14 @@ impl DagScheduler {
             job_id,
             kind: StageKind::Result { partitions },
         };
-        self.alloc_stage(mk_stage)
+        let stage_id = self.alloc_stage(mk_stage);
+        self.result_stage_to_active_job.insert(stage_id, job_id);
+        stage_id
     }
 
     fn create_shuffle_map_stage(&self, job_id: JobId, shuffle_dep: &ShuffleDependency) -> StageId {
         let shuffle_id = shuffle_dep.shuffle_id;
-        if let Some(stage_id) = self.shuffle_id_to_map_stage.get(shuffle_id) {
+        if let Some(stage_id) = self.shuffle_id_to_map_stage.get_opt(shuffle_id) {
             return *stage_id;
         }
 
@@ -207,11 +184,10 @@ impl DagScheduler {
             .collect()
     }
 
-    fn create_active_job(&self, job_id: JobId, stage_id: StageId) {
-        let active_job = ActiveJob::new(job_id, stage_id);
-        self.create_active_job(job_id, stage_id);
+    fn create_active_job(self: Arc<Self>, job_id: JobId, stage_id: StageId) {
         self.stage_to_active_jobs.entry(stage_id).or_default().push(job_id);
-        self.active_jobs.entry(job_id).or_default().push(active_job);
+        let active_job = ActiveJob::new(Arc::clone(&self), job_id, stage_id);
+        assert!(self.active_jobs.insert(job_id, active_job).is_none());
     }
 
     fn next_stage_id(&self) -> StageId {

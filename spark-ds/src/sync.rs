@@ -9,6 +9,8 @@ use std::ops::{Deref, DerefMut};
 #[derive(Debug, Clone)]
 pub struct ConcurrentIndexVec<I: Eq + Hash, T>(DashMap<I, T, IdxHash>);
 
+pub type MapRef<'a, K, V> = Ref<'a, K, V, IdxHash>;
+
 impl<I: Eq + Hash, T> Default for ConcurrentIndexVec<I, T> {
     fn default() -> Self {
         Self(Default::default())
@@ -16,7 +18,11 @@ impl<I: Eq + Hash, T> Default for ConcurrentIndexVec<I, T> {
 }
 
 impl<I: Idx + Hash, T> ConcurrentIndexVec<I, T> {
-    pub fn get(&self, idx: I) -> Option<Ref<'_, I, T, IdxHash>> {
+    pub fn get(&self, idx: I) -> MapRef<'_, I, T> {
+        self.get_opt(idx).unwrap()
+    }
+
+    pub fn get_opt(&self, idx: I) -> Option<MapRef<'_, I, T>> {
         self.0.get(&idx)
     }
 

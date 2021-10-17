@@ -8,7 +8,7 @@ pub struct Map<R, F> {
 
 impl<R: Rdd, F> Map<R, F> {
     pub fn new(rdd: Arc<R>, f: F) -> Self {
-        let rdd_id = rdd.spark().next_rdd_id();
+        let rdd_id = rdd.scx().next_rdd_id();
         Self { id: rdd_id, rdd, f }
     }
 }
@@ -18,8 +18,8 @@ impl<R: TypedRdd, F: Datum> Rdd for Map<R, F> {
         self.id
     }
 
-    fn spark(&self) -> Arc<SparkContext> {
-        self.rdd.spark()
+    fn scx(&self) -> Arc<SparkContext> {
+        self.rdd.scx()
     }
 
     fn dependencies(&self) -> Dependencies {
@@ -46,7 +46,7 @@ where
     fn compute(
         self: Arc<Self>,
         ctxt: TaskContext,
-        split: PartitionIndex,
+        split: PartitionIdx,
     ) -> Box<dyn Iterator<Item = Self::Output>> {
         Box::new(Arc::clone(&self.rdd).compute(ctxt, split).map(self.f.clone()))
     }
