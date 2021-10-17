@@ -136,6 +136,10 @@ dependencies = [
 [[package]]
 name = "spark-ds"
 version = "0.1.0"
+dependencies = [
+ "dashmap",
+ "indexed_vec",
+]
 
 [[package]]
 name = "static_assertions"

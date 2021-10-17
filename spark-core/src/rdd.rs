@@ -5,10 +5,13 @@ pub use parallel_collection::ParallelCollection;
 
 use self::map::Map;
 use crate::*;
+use indexed_vec::newtype_index;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::Arc;
+
+newtype_index!(RddId);
 
 #[derive(Clone)]
 pub struct RddRef(Arc<dyn Rdd>);
@@ -48,7 +51,21 @@ impl PartialEq for RddRef {
 
 pub type TypedRddRef<T> = Arc<dyn TypedRdd<Output = T>>;
 
+impl PartialEq for dyn Rdd {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
+impl Hash for dyn Rdd {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id().hash(state)
+    }
+}
+
 pub trait Rdd: Send + Sync + 'static {
+    fn id(&self) -> RddId;
+
     fn spark(&self) -> Arc<SparkContext>;
 
     fn dependencies(&self) -> Dependencies;

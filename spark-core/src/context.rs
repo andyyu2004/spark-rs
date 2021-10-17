@@ -1,3 +1,5 @@
+use indexed_vec::Idx;
+
 use crate::config::SparkConfig;
 use crate::rdd::*;
 use crate::scheduler::{DagScheduler, JobOutput, PartitionMapper, TaskScheduler};
@@ -5,18 +7,24 @@ use crate::*;
 use std::cell::UnsafeCell;
 use std::lazy::SyncOnceCell;
 use std::ops::Deref;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub struct SparkContext {
     dag_scheduler_cell: SyncOnceCell<Arc<DagScheduler>>,
     task_scheduler_cell: SyncOnceCell<TaskScheduler>,
+    rdd_idx: AtomicUsize,
 }
 
 static_assertions::assert_impl_all!(Arc<SparkContext>: Send, Sync);
 
 impl SparkContext {
     pub fn new(config: SparkConfig) -> Self {
-        Self { dag_scheduler_cell: Default::default(), task_scheduler_cell: Default::default() }
+        Self {
+            dag_scheduler_cell: Default::default(),
+            task_scheduler_cell: Default::default(),
+            rdd_idx: Default::default(),
+        }
     }
 
     pub fn dag_scheduler(&self) -> Arc<DagScheduler> {
@@ -25,6 +33,10 @@ impl SparkContext {
 
     pub fn task_scheduler(&self) -> &TaskScheduler {
         self.task_scheduler_cell.get_or_init(|| todo!())
+    }
+
+    pub fn next_rdd_id(&self) -> RddId {
+        RddId::new(self.rdd_idx.fetch_add(1, Ordering::SeqCst))
     }
 
     #[inline(always)]

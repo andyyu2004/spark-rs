@@ -1,4 +1,43 @@
+use crate::hash::IdxHash;
+use dashmap::mapref::one::Ref;
+use dashmap::DashMap;
+use indexed_vec::Idx;
+use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
+
+/// Wrapper around [DashMap] that is intented to emulate a [indexed_vec::IndexVec] that is concurrent
+#[derive(Debug, Clone)]
+pub struct ConcurrentIndexVec<I: Eq + Hash, T>(DashMap<I, T, IdxHash>);
+
+impl<I: Eq + Hash, T> Default for ConcurrentIndexVec<I, T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<I: Idx + Hash, T> ConcurrentIndexVec<I, T> {
+    pub fn get(&self, idx: I) -> Option<Ref<'_, I, T, IdxHash>> {
+        self.0.get(&idx)
+    }
+
+    pub fn contains_key(&self, idx: I) -> bool {
+        self.0.contains_key(&idx)
+    }
+}
+
+impl<I: Idx + Hash, T> Deref for ConcurrentIndexVec<I, T> {
+    type Target = DashMap<I, T, IdxHash>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<I: Idx + Hash, T> DerefMut for ConcurrentIndexVec<I, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 /// A type which only allows its inner value to be used in one thread.
 /// It will panic if it is used on multiple threads.

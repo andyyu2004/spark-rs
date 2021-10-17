@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 pub struct ParallelCollection<T> {
     scx: Arc<SparkContext>,
+    rdd_id: RddId,
     partitions: Vec<ParallelCollectionPartition<T>>,
     partition_indices: Vec<PartitionIndex>,
 }
@@ -21,11 +22,16 @@ impl<T: Datum> ParallelCollection<T> {
             .map(|chunk| ParallelCollectionPartition { data: Arc::new(chunk.to_vec()) })
             .collect::<Vec<_>>();
         let partition_indices = (0..partitions.len()).map(PartitionIndex::new).collect();
-        Self { scx, partitions, partition_indices }
+        let rdd_id = scx.next_rdd_id();
+        Self { rdd_id, scx, partitions, partition_indices }
     }
 }
 
 impl<T: Datum> Rdd for ParallelCollection<T> {
+    fn id(&self) -> RddId {
+        self.rdd_id
+    }
+
     fn spark(&self) -> Arc<SparkContext> {
         Arc::clone(&self.scx)
     }

@@ -1,17 +1,23 @@
 use super::*;
 
 pub struct Map<R, F> {
+    id: RddId,
     rdd: Arc<R>,
     f: F,
 }
 
-impl<R, F> Map<R, F> {
+impl<R: Rdd, F> Map<R, F> {
     pub fn new(rdd: Arc<R>, f: F) -> Self {
-        Self { rdd, f }
+        let rdd_id = rdd.spark().next_rdd_id();
+        Self { id: rdd_id, rdd, f }
     }
 }
 
 impl<R: TypedRdd, F: Datum> Rdd for Map<R, F> {
+    fn id(&self) -> RddId {
+        self.id
+    }
+
     fn spark(&self) -> Arc<SparkContext> {
         self.rdd.spark()
     }
