@@ -32,7 +32,7 @@ where
     pub stage_id: usize,
     pinned: bool,
     #[serde(with = "serde_traitobject")]
-    pub rdd: Arc<dyn crate::rdd::TypedRdd<Output = T>>,
+    pub rdd: Arc<dyn crate::rdd::TypedRdd<Element = T>>,
     pub func: Arc<F>,
     pub partition: usize,
     pub output_id: usize,

@@ -49,7 +49,7 @@ impl PartialEq for RddRef {
     }
 }
 
-pub type TypedRddRef<T> = Arc<dyn TypedRdd<Output = T>>;
+pub type TypedRddRef<T> = Arc<dyn TypedRdd<Element = T>>;
 
 impl PartialEq for dyn Rdd {
     fn eq(&self, other: &Self) -> bool {
@@ -91,7 +91,7 @@ pub trait Rdd:
 }
 
 pub trait TypedRdd: Rdd {
-    type Output: Datum;
+    type Element: Datum;
 
     /// Convert the `Arc<TypedRdd>` to a `RddRef`
     /// Can be implemented as the following.
@@ -107,7 +107,7 @@ pub trait TypedRdd: Rdd {
         self: Arc<Self>,
         ctxt: TaskContext,
         split: PartitionIdx,
-    ) -> Box<dyn Iterator<Item = Self::Output>>;
+    ) -> Box<dyn Iterator<Item = Self::Element>>;
 
     fn map<F>(self: Arc<Self>, f: F) -> Map<Self, F>
     where
@@ -119,7 +119,7 @@ pub trait TypedRdd: Rdd {
 
 #[async_trait]
 trait RddAsyncExt: TypedRdd + Sized {
-    async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Output>> {
+    async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Element>> {
         let scx = self.scx();
         let partition_iterators = scx.collect_rdd(self, Fn!(|_cx, iter| iter)).await?;
         Ok(partition_iterators.into_iter().flatten().collect())
@@ -129,5 +129,5 @@ trait RddAsyncExt: TypedRdd + Sized {
 impl<R: TypedRdd> RddAsyncExt for R {
 }
 
-fn _rdd_is_dyn_safe<T>(_rdd: Box<dyn TypedRdd<Output = T>>) {
+fn _rdd_is_dyn_safe<T>(_rdd: Box<dyn TypedRdd<Element = T>>) {
 }

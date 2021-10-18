@@ -124,7 +124,11 @@ where
                     kind: TaskKind::Result(Arc::clone(&bytes)),
                 }),
         };
-        if tasks.is_empty() {}
+        if tasks.is_empty() {
+            todo!()
+        } else {
+            todo!()
+        }
         todo!()
     }
 

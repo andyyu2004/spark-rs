@@ -42,11 +42,11 @@ impl SparkContext {
     }
 
     #[inline(always)]
-    pub fn make_rdd<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Output = T> {
+    pub fn make_rdd<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Element = T> {
         self.parallelize(data)
     }
 
-    pub fn parallelize<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Output = T> {
+    pub fn parallelize<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Element = T> {
         let num_slices = self.task_scheduler().default_parallelism();
         self.parallelize_with_slices(data, num_slices)
     }
@@ -55,7 +55,7 @@ impl SparkContext {
         self: Arc<Self>,
         data: &[T],
         num_slices: usize,
-    ) -> impl TypedRdd<Output = T> {
+    ) -> impl TypedRdd<Element = T> {
         ParallelCollection::new(self, data, num_slices)
     }
 

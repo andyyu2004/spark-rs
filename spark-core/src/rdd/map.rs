@@ -38,9 +38,9 @@ impl<R, F, T> TypedRdd for Map<R, F>
 where
     R: TypedRdd + Serialize + DeserializeOwned,
     T: Datum,
-    F: Fn(R::Output) -> T + Datum,
+    F: Fn(R::Element) -> T + Datum,
 {
-    type Output = T;
+    type Element = T;
 
     fn as_untyped(self: Arc<Self>) -> RddRef {
         RddRef::from_inner(self)
@@ -50,7 +50,7 @@ where
         self: Arc<Self>,
         ctxt: TaskContext,
         split: PartitionIdx,
-    ) -> Box<dyn Iterator<Item = Self::Output>> {
+    ) -> Box<dyn Iterator<Item = Self::Element>> {
         Box::new(Arc::clone(&self.rdd).compute(ctxt, split).map(self.f.clone()))
     }
 }

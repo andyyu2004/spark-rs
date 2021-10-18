@@ -49,7 +49,7 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
 }
 
 impl<T: Datum> TypedRdd for ParallelCollection<T> {
-    type Output = T;
+    type Element = T;
 
     fn as_untyped(self: Arc<Self>) -> RddRef {
         RddRef::from_inner(self)
@@ -59,7 +59,7 @@ impl<T: Datum> TypedRdd for ParallelCollection<T> {
         self: Arc<Self>,
         _cx: TaskContext,
         idx: PartitionIdx,
-    ) -> Box<dyn Iterator<Item = Self::Output>> {
+    ) -> Box<dyn Iterator<Item = Self::Element>> {
         let partition = &self.partitions[idx.index()];
         let data = Arc::clone(&partition.data);
         Box::new((0..data.len()).map(move |i| data[i].clone()))
