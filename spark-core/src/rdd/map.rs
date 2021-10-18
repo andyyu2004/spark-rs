@@ -1,5 +1,8 @@
 use super::*;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct Map<R, F> {
     id: RddId,
     rdd: Arc<R>,
@@ -13,7 +16,7 @@ impl<R: Rdd, F> Map<R, F> {
     }
 }
 
-impl<R: TypedRdd, F: Datum> Rdd for Map<R, F> {
+impl<R: Rdd + Serialize + DeserializeOwned, F: Datum> Rdd for Map<R, F> {
     fn id(&self) -> RddId {
         self.id
     }
@@ -33,7 +36,7 @@ impl<R: TypedRdd, F: Datum> Rdd for Map<R, F> {
 
 impl<R, F, T> TypedRdd for Map<R, F>
 where
-    R: TypedRdd,
+    R: TypedRdd + Serialize + DeserializeOwned,
     T: Datum,
     F: Fn(R::Output) -> T + Datum,
 {

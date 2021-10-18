@@ -1,8 +1,7 @@
+use super::*;
 use std::hash::{Hash, Hasher};
 
-use super::*;
-
-newtype_index!(StageId);
+crate::newtype_index!(StageId);
 
 pub struct Stage {
     pub(super) rdd: RddRef,

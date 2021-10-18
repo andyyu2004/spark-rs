@@ -1,18 +1,16 @@
-use indexed_vec::Idx;
-
 use crate::config::SparkConfig;
 use crate::rdd::*;
-use crate::scheduler::{DagScheduler, JobOutput, PartitionMapper, TaskScheduler};
+use crate::scheduler::*;
 use crate::*;
-use std::cell::UnsafeCell;
+use indexed_vec::Idx;
+use serde::{Deserialize, Serialize};
 use std::lazy::SyncOnceCell;
-use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub struct SparkContext {
     dag_scheduler_cell: SyncOnceCell<Arc<DagScheduler>>,
-    task_scheduler_cell: SyncOnceCell<TaskScheduler>,
+    task_scheduler_cell: SyncOnceCell<Arc<TaskScheduler>>,
     rdd_idx: AtomicUsize,
 }
 
@@ -28,11 +26,15 @@ impl SparkContext {
     }
 
     pub fn dag_scheduler(&self) -> Arc<DagScheduler> {
-        Arc::clone(self.dag_scheduler_cell.get_or_init(|| todo!()))
+        let task_scheduler = self.task_scheduler();
+        Arc::clone(
+            self.dag_scheduler_cell.get_or_init(|| Arc::new(DagScheduler::new(task_scheduler))),
+        )
     }
 
-    pub fn task_scheduler(&self) -> &TaskScheduler {
-        self.task_scheduler_cell.get_or_init(|| todo!())
+    pub fn task_scheduler(&self) -> Arc<TaskScheduler> {
+        let backend = Box::new(LocalSchedulerBackend::new());
+        Arc::clone(self.task_scheduler_cell.get_or_init(|| Arc::new(TaskScheduler::new(backend))))
     }
 
     pub fn next_rdd_id(&self) -> RddId {
@@ -102,4 +104,6 @@ impl SparkContext {
         Box::new(InterruptibleIterator { iter })
     }
 }
+
+#[derive(Serialize, Deserialize)]
 pub struct TaskContext {}

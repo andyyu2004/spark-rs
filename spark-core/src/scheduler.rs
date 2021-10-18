@@ -2,42 +2,32 @@ mod event;
 mod job;
 mod stage;
 mod task;
+mod task_scheduler;
 
 pub use self::job::JobOutput;
+pub use self::task_scheduler::*;
 
 use self::event::*;
 use self::job::*;
 use self::stage::*;
 use self::task::*;
 use crate::rdd::{RddRef, TypedRddRef};
+use crate::serialize::SerdeFn;
 use crate::*;
 use dashmap::DashSet;
-use indexed_vec::{newtype_index, Idx};
+use indexed_vec::Idx;
 use spark_ds::sync::{ConcurrentIndexVec, MapRef};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::task::{JoinHandle, LocalSet};
 
-pub trait PartitionMapper<T, U> =
-    FnOnce(TaskContext, SparkIterator<T>) -> U + Send + Sync + 'static;
-pub type PartitionMapperRef<T, U> = Arc<dyn PartitionMapper<T, U>>;
-
-pub struct TaskScheduler {
-    backend: Box<dyn TaskSchedulerBackend>,
-}
-
-impl TaskScheduler {
-    pub fn default_parallelism(&self) -> usize {
-        num_cpus::get()
-    }
-}
-
-pub trait TaskSchedulerBackend: Send + Sync {}
+pub trait PartitionMapper<T, U> = SerdeFn(TaskContext, SparkIterator<T>) -> U;
 
 static_assertions::assert_impl_all!(Arc<DagScheduler>: Send, Sync);
 
 pub struct DagScheduler {
+    task_scheduler: Arc<TaskScheduler>,
     job_idx: AtomicUsize,
     stage_idx: AtomicUsize,
     job_txs: ConcurrentIndexVec<JobId, SchedulerEventSender>,
@@ -54,8 +44,9 @@ pub struct DagScheduler {
 }
 
 impl DagScheduler {
-    pub fn new() -> Self {
+    pub fn new(task_scheduler: Arc<TaskScheduler>) -> Self {
         Self {
+            task_scheduler,
             job_txs: Default::default(),
             job_idx: Default::default(),
             stage_idx: Default::default(),
@@ -89,7 +80,7 @@ impl DagScheduler {
         self: Arc<Self>,
         rdd: TypedRddRef<T>,
         partitions: Partitions,
-        mapper: PartitionMapperRef<T, U>,
+        mapper: Arc<impl PartitionMapper<T, U>>,
     ) -> SparkResult<JobHandle<JobOutput<U>>>
     where
         T: Datum,

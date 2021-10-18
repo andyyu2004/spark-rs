@@ -5,7 +5,7 @@ pub use parallel_collection::ParallelCollection;
 
 use self::map::Map;
 use crate::*;
-use indexed_vec::newtype_index;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 newtype_index!(RddId);
 
-#[derive(Clone)]
-pub struct RddRef(Arc<dyn Rdd>);
+#[derive(Clone, Serialize, Deserialize)]
+pub struct RddRef(#[serde(with = "serde_traitobject")] Arc<dyn Rdd>);
 
 impl Deref for RddRef {
     type Target = dyn Rdd;
@@ -63,7 +63,9 @@ impl Hash for dyn Rdd {
     }
 }
 
-pub trait Rdd: Send + Sync + 'static {
+pub trait Rdd:
+    Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize + 'static
+{
     fn id(&self) -> RddId;
 
     fn scx(&self) -> Arc<SparkContext>;
@@ -119,7 +121,7 @@ pub trait TypedRdd: Rdd {
 trait RddAsyncExt: TypedRdd + Sized {
     async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Output>> {
         let scx = self.scx();
-        let partition_iterators = scx.collect_rdd(self, |_cx, iter| iter).await?;
+        let partition_iterators = scx.collect_rdd(self, Fn!(|_cx, iter| iter)).await?;
         Ok(partition_iterators.into_iter().flatten().collect())
     }
 }

@@ -1,3 +1,3 @@
-indexed_vec::newtype_index!(PartitionIdx);
+crate::newtype_index!(PartitionIdx);
 
 pub type Partitions = Vec<PartitionIdx>;

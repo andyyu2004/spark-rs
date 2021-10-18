@@ -1,8 +1,7 @@
 use crate::rdd::RddRef;
-use indexed_vec::newtype_index;
 use std::sync::Arc;
 
-newtype_index!(ShuffleId);
+crate::newtype_index!(ShuffleId);
 
 pub type Dependencies = Arc<Vec<Dependency>>;
 

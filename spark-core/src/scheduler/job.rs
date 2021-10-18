@@ -1,12 +1,9 @@
-use fixedbitset::FixedBitSet;
-
-use crate::rdd::Rdd;
-
 use super::*;
+use fixedbitset::FixedBitSet;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
-
-newtype_index!(JobId);
+crate::newtype_index!(JobId);
 
 pub type JobOutput<T> = Vec<T>;
 
@@ -45,19 +42,22 @@ impl<T> JobHandle<T> {
     }
 }
 
-pub(super) struct JobContext<T, U> {
+pub(super) struct JobContext<T, U, F> {
     scheduler: Arc<DagScheduler>,
     rx: SchedulerEventReceiver,
-    mapper: PartitionMapperRef<T, U>,
+    mapper: Arc<F>,
+    _t: PhantomData<T>,
+    _u: PhantomData<U>,
 }
 
-impl<T: Datum, U: Send + 'static> JobContext<T, U> {
-    pub fn new(
-        scheduler: Arc<DagScheduler>,
-        rx: SchedulerEventReceiver,
-        mapper: PartitionMapperRef<T, U>,
-    ) -> Self {
-        Self { scheduler, rx, mapper }
+impl<T, U, F> JobContext<T, U, F>
+where
+    T: Datum,
+    U: Send + 'static,
+    F: PartitionMapper<T, U>,
+{
+    pub fn new(scheduler: Arc<DagScheduler>, rx: SchedulerEventReceiver, mapper: Arc<F>) -> Self {
+        Self { scheduler, rx, mapper, _t: PhantomData, _u: PhantomData }
     }
 
     pub fn start(self) -> JoinHandle<JobOutput<U>> {
@@ -66,12 +66,14 @@ impl<T: Datum, U: Send + 'static> JobContext<T, U> {
 
     async fn process_job(mut self) -> JobOutput<U> {
         while let Some(event) = self.rx.recv().await {
-            self.handle_event(event).await
+            if let Err(err) = self.handle_event(event).await {
+                todo!("handle error while processing new job")
+            }
         }
         todo!()
     }
 
-    async fn handle_event(&self, event: SchedulerEvent) {
+    async fn handle_event(&self, event: SchedulerEvent) -> SparkResult<()> {
         match event {
             SchedulerEvent::JobSubmitted(event) => self.handle_job_submitted(event),
         }
@@ -80,17 +82,17 @@ impl<T: Datum, U: Send + 'static> JobContext<T, U> {
     fn handle_job_submitted(
         &self,
         JobSubmittedEvent { rdd, partitions, job_id }: JobSubmittedEvent,
-    ) {
+    ) -> SparkResult<()> {
         let stage_id = self.create_result_stage(rdd, partitions, job_id);
         Arc::clone(&self).create_active_job(job_id, stage_id);
-        self.submit_stage(stage_id);
+        self.submit_stage(stage_id)
     }
 
     /// Submits a stage to be executed
     /// This is a noop if the stage already exists
-    fn submit_stage(&self, stage_id: StageId) {
+    fn submit_stage(&self, stage_id: StageId) -> SparkResult<()> {
         if self.stage_exists(stage_id) {
-            return;
+            return Ok(());
         }
 
         // The id of the oldest job that depends on this stage
@@ -101,24 +103,32 @@ impl<T: Datum, U: Send + 'static> JobContext<T, U> {
                 None => todo!("abort stage"),
             };
 
-        self.submit_parent_stages(stage_id);
+        self.submit_parent_stages(stage_id)?;
 
         let stage = self.stages.get(stage_id);
         let uncomputed_partitions = self.find_uncomputed_partitions(stage_id);
         self.running_stages.insert(stage_id);
-        let task = match &stage.kind {
+
+        let bytes = match &stage.kind {
             StageKind::ShuffleMap => todo!(),
-            StageKind::Result { .. } => uncomputed_partitions.into_iter().map(|partition| Task {
-                stage_id,
-                job_id,
-                partition,
-                kind: TaskKind::Result(stage.rdd(), Arc::clone(&self.mapper)),
-            }),
+            StageKind::Result { .. } =>
+                Arc::new(bincode::serialize(&(&stage.rdd(), &self.mapper))?),
         };
+        let tasks = match &stage.kind {
+            StageKind::ShuffleMap => todo!(),
+            StageKind::Result { partitions: _ } =>
+                uncomputed_partitions.into_iter().map(move |partition| Task {
+                    stage_id,
+                    job_id,
+                    partition,
+                    kind: TaskKind::Result(Arc::clone(&bytes)),
+                }),
+        };
+        if tasks.is_empty() {}
         todo!()
     }
 
-    pub(crate) fn submit_parent_stages(&self, stage_id: StageId) {
+    pub(crate) fn submit_parent_stages(&self, stage_id: StageId) -> SparkResult<()> {
         let stage = self.stages.get(stage_id);
         let mut rdds = vec![stage.rdd()];
         let mut visited = HashSet::new();
@@ -132,15 +142,16 @@ impl<T: Datum, U: Send + 'static> JobContext<T, U> {
                     Dependency::Narrow(narrow_dep) => rdds.push(narrow_dep.rdd()),
                     Dependency::Shuffle(shuffle_dep) => {
                         let stage_id = self.create_shuffle_map_stage(stage.job_id, shuffle_dep);
-                        self.submit_stage(stage_id);
+                        self.submit_stage(stage_id)?;
                     }
                 }
             }
         }
+        Ok(())
     }
 }
 
-impl<T: Datum, U: Send + 'static> Deref for JobContext<T, U> {
+impl<T, U, F> Deref for JobContext<T, U, F> {
     type Target = Arc<DagScheduler>;
 
     fn deref(&self) -> &Self::Target {

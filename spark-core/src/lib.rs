@@ -1,4 +1,11 @@
-#![feature(new_uninit, once_cell, trait_alias)]
+#![feature(
+    new_uninit,
+    once_cell,
+    trait_alias,
+    arbitrary_self_types,
+    unboxed_closures,
+    exact_size_is_empty
+)]
 
 pub mod rdd;
 
@@ -10,6 +17,7 @@ mod error;
 mod iter;
 mod partition;
 mod scheduler;
+mod serialize;
 mod session;
 
 pub use context::*;
@@ -25,3 +33,6 @@ extern crate async_trait;
 
 #[macro_use]
 extern crate anyhow;
+
+#[macro_use]
+extern crate serde_closure;
