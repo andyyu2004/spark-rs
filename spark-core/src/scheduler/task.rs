@@ -1,5 +1,7 @@
 use super::*;
+use serde::{Deserialize, Serialize};
 
+#[derive(Deserialize, Serialize)]
 pub struct Task {
     pub(super) stage_id: StageId,
     pub(super) partition: PartitionIdx,
@@ -7,6 +9,21 @@ pub struct Task {
     pub(super) kind: TaskKind,
 }
 
+impl Task {
+    pub fn run(&self) {
+        match &self.kind {
+            TaskKind::Shuffle() => todo!(),
+            TaskKind::Result(bytes) => {
+                let (rdd, mapper) =
+                    bincode::deserialize::<(RddRef, Arc<dyn serde_traitobject::Fn()>)>(bytes)
+                        .expect("unexpectedly failed to deserialize task contents");
+                todo!();
+            }
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub enum TaskKind {
     Shuffle(),
     /// The bytes should be deserialized as (RddRef, PartitionMapperRef<T, U>)
@@ -14,9 +31,22 @@ pub enum TaskKind {
     Result(Arc<Vec<u8>>),
 }
 
-pub struct TaskSet {}
+pub struct TaskSet<I> {
+    pub(super) job_id: JobId,
+    pub(super) stage_id: StageId,
+    pub(super) tasks: I,
+}
 
-#[derive(serde::Serialize, serde::Deserialize)]
+impl<I> TaskSet<I>
+where
+    I: IntoIterator<Item = Task>,
+{
+    pub fn new(job_id: JobId, stage_id: StageId, tasks: I) -> Self {
+        Self { job_id, stage_id, tasks }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct ResultTask<T: Datum, U: Datum, F>
 where
     F: Fn((TaskContext, Box<dyn Iterator<Item = T>>)) -> U

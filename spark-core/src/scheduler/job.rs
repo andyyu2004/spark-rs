@@ -1,4 +1,5 @@
 use super::*;
+use async_recursion::async_recursion;
 use fixedbitset::FixedBitSet;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -75,22 +76,23 @@ where
 
     async fn handle_event(&self, event: SchedulerEvent) -> SparkResult<()> {
         match event {
-            SchedulerEvent::JobSubmitted(event) => self.handle_job_submitted(event),
+            SchedulerEvent::JobSubmitted(event) => self.handle_job_submitted(event).await,
         }
     }
 
-    fn handle_job_submitted(
+    async fn handle_job_submitted(
         &self,
         JobSubmittedEvent { rdd, partitions, job_id }: JobSubmittedEvent,
     ) -> SparkResult<()> {
         let stage_id = self.create_result_stage(rdd, partitions, job_id);
         Arc::clone(&self).create_active_job(job_id, stage_id);
-        self.submit_stage(stage_id)
+        self.submit_stage(stage_id).await
     }
 
     /// Submits a stage to be executed
     /// This is a noop if the stage already exists
-    fn submit_stage(&self, stage_id: StageId) -> SparkResult<()> {
+    #[async_recursion(?Send)]
+    async fn submit_stage(&self, stage_id: StageId) -> SparkResult<()> {
         if self.stage_exists(stage_id) {
             return Ok(());
         }
@@ -103,7 +105,7 @@ where
                 None => todo!("abort stage"),
             };
 
-        self.submit_parent_stages(stage_id)?;
+        self.submit_parent_stages(stage_id).await?;
 
         let stage = self.stages.get(stage_id);
         let uncomputed_partitions = self.find_uncomputed_partitions(stage_id);
@@ -124,15 +126,17 @@ where
                     kind: TaskKind::Result(Arc::clone(&bytes)),
                 }),
         };
+
         if tasks.is_empty() {
             todo!()
         } else {
-            todo!()
+            let task_set = TaskSet::new(job_id, stage_id, tasks);
+            self.task_scheduler.submit_tasks(task_set).await;
         }
-        todo!()
+        Ok(())
     }
 
-    pub(crate) fn submit_parent_stages(&self, stage_id: StageId) -> SparkResult<()> {
+    pub(crate) async fn submit_parent_stages(&self, stage_id: StageId) -> SparkResult<()> {
         let stage = self.stages.get(stage_id);
         let mut rdds = vec![stage.rdd()];
         let mut visited = HashSet::new();
@@ -146,7 +150,7 @@ where
                     Dependency::Narrow(narrow_dep) => rdds.push(narrow_dep.rdd()),
                     Dependency::Shuffle(shuffle_dep) => {
                         let stage_id = self.create_shuffle_map_stage(stage.job_id, shuffle_dep);
-                        self.submit_stage(stage_id)?;
+                        self.submit_stage(stage_id).await?;
                     }
                 }
             }

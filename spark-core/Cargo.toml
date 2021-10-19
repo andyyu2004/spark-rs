@@ -4,18 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-num_cpus = "1.13"
+anyhow = "1"
+async-recursion = "0.3"
 async-trait = "0.1"
-typetag = "0.1"
-static_assertions = "1"
+bincode = "1"
 dashmap = "4"
 fixedbitset = "0.4"
-anyhow = "1"
-bincode = "1"
+futures = "0.3"
 indexed_vec = "1"
+num_cpus = "1.13"
+rayon = "1"
+serde_closure = "0.3"
 serde_derive = "1"
 serde_traitobject = "0.2"
-serde_closure = "0.3"
+static_assertions = "1"
+typetag = "0.1"
 spark-ds = { path = "../spark-ds" }
 serde = { version = "1", features = ["derive", "rc"] }
 tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "sync", "test-util"] }
