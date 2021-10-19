@@ -13,11 +13,12 @@ impl Hasher for IdxHasher {
     }
 
     fn write(&mut self, _bytes: &[u8]) {
-        panic!("only write_usize implemented")
+        panic!("only `write_u32` implemented")
     }
 
-    fn write_usize(&mut self, i: usize) {
-        *self.hash.as_mut().expect("hasher already written to") = i as u64;
+    fn write_u32(&mut self, i: u32) {
+        assert!(self.hash.is_none(), "hasher already written to");
+        self.hash = Some(i as u64);
     }
 }
 

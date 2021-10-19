@@ -16,6 +16,12 @@ impl<R: Rdd, F> Map<R, F> {
     }
 }
 
+impl<R: Rdd, F> std::fmt::Debug for Map<R, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Map").field("id", &self.id).field("rdd", &self.rdd).finish_non_exhaustive()
+    }
+}
+
 impl<R: Rdd + Serialize + DeserializeOwned, F: Datum> Rdd for Map<R, F> {
     fn id(&self) -> RddId {
         self.id

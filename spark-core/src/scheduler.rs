@@ -69,7 +69,7 @@ impl DagScheduler {
     ) -> SparkResult<JobOutput<U>>
     where
         T: Datum,
-        U: Send + 'static,
+        U: Send + Sync + 'static,
     {
         assert!(!partitions.is_empty(), "handle empty partitions");
         let handle = self.submit_job(rdd, partitions, Arc::new(f)).await?;
@@ -84,7 +84,7 @@ impl DagScheduler {
     ) -> SparkResult<JobHandle<JobOutput<U>>>
     where
         T: Datum,
-        U: Send + 'static,
+        U: Send + Sync + 'static,
     {
         let job_id = self.next_job_id();
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -95,7 +95,7 @@ impl DagScheduler {
         }))
         .map_err(|_| anyhow!("failed to send `JobSubmitted` event"))?;
         let join_handle = JobContext::new(self, rx, mapper).start();
-        Ok(JobHandle::new(job_id, join_handle))
+        Ok(JobHandle::new(job_id, tx, join_handle))
     }
 
     fn active_job(&self, stage: StageId) -> MapRef<'_, JobId, ActiveJob> {

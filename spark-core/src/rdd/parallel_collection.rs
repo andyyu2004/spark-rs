@@ -21,12 +21,18 @@ impl<T: Datum> ParallelCollection<T> {
     pub fn new(scx: Arc<SparkContext>, data: &[T], num_slices: usize) -> Self {
         assert!(num_slices > 0, "require at least one slice");
         let partitions = data
-            .chunks(data.len() / num_slices)
+            .chunks(std::cmp::max(data.len() / num_slices, 1))
             .map(|chunk| ParallelCollectionPartition { data: Arc::new(chunk.to_vec()) })
             .collect::<Vec<_>>();
         let partition_indices = (0..partitions.len()).map(PartitionIdx::new).collect();
         let rdd_id = scx.next_rdd_id();
         Self { rdd_id, scx: Arc::downgrade(&scx), partitions, partition_indices }
+    }
+}
+
+impl<T> std::fmt::Debug for ParallelCollection<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParallelCollection").field("rdd_id", &self.rdd_id).finish_non_exhaustive()
     }
 }
 
@@ -36,7 +42,7 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
     }
 
     fn scx(&self) -> Arc<SparkContext> {
-        todo!()
+        self.scx.upgrade().expect("cannot access context remotely")
     }
 
     fn dependencies(&self) -> Dependencies {

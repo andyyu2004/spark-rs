@@ -1,13 +1,19 @@
+use std::sync::Arc;
+
 use crate::config::SparkConfig;
 use crate::SparkContext;
 
 pub struct SparkSession {
-    scx: SparkContext,
+    scx: Arc<SparkContext>,
 }
 
 impl SparkSession {
     pub fn builder() -> SparkSessionBuilder {
         SparkSessionBuilder::default()
+    }
+
+    pub fn spark_context(&self) -> Arc<SparkContext> {
+        Arc::clone(&self.scx)
     }
 }
 

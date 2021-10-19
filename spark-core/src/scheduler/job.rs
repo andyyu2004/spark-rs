@@ -33,13 +33,14 @@ impl ActiveJob {
 }
 
 pub struct JobHandle<T> {
-    pub(super) join_handle: JoinHandle<T>,
+    pub(super) tx: SchedulerEventSender,
     pub(super) job_id: JobId,
+    pub(super) join_handle: JoinHandle<T>,
 }
 
 impl<T> JobHandle<T> {
-    pub fn new(job_id: JobId, join_handle: JoinHandle<T>) -> Self {
-        Self { join_handle, job_id }
+    pub fn new(job_id: JobId, tx: SchedulerEventSender, join_handle: JoinHandle<T>) -> Self {
+        Self { join_handle, tx, job_id }
     }
 }
 
@@ -54,7 +55,7 @@ pub(super) struct JobContext<T, U, F> {
 impl<T, U, F> JobContext<T, U, F>
 where
     T: Datum,
-    U: Send + 'static,
+    U: Send + Sync + 'static,
     F: PartitionMapper<T, U>,
 {
     pub fn new(scheduler: Arc<DagScheduler>, rx: SchedulerEventReceiver, mapper: Arc<F>) -> Self {
@@ -62,12 +63,15 @@ where
     }
 
     pub fn start(self) -> JoinHandle<JobOutput<U>> {
-        LocalSet::new().spawn_local(self.process_job())
+        // LocalSet::new().spawn_local(self.process_job())
+        tokio::spawn(self.process_job())
     }
 
+    #[instrument(skip(self))]
     async fn process_job(mut self) -> JobOutput<U> {
         while let Some(event) = self.rx.recv().await {
-            if let Err(err) = self.handle_event(event).await {
+            info!("recv scheduler event: {:?}", event);
+            if let Err(_err) = self.handle_event(event).await {
                 todo!("handle error while processing new job")
             }
         }
@@ -91,7 +95,7 @@ where
 
     /// Submits a stage to be executed
     /// This is a noop if the stage already exists
-    #[async_recursion(?Send)]
+    #[async_recursion]
     async fn submit_stage(&self, stage_id: StageId) -> SparkResult<()> {
         if self.stage_exists(stage_id) {
             return Ok(());

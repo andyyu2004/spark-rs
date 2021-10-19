@@ -17,12 +17,13 @@ pub struct SparkContext {
 static_assertions::assert_impl_all!(Arc<SparkContext>: Send, Sync);
 
 impl SparkContext {
-    pub fn new(config: SparkConfig) -> Self {
-        Self {
+    pub fn new(config: SparkConfig) -> Arc<Self> {
+        let scx = Self {
             dag_scheduler_cell: Default::default(),
             task_scheduler_cell: Default::default(),
             rdd_idx: Default::default(),
-        }
+        };
+        Arc::new(scx)
     }
 
     pub fn dag_scheduler(&self) -> Arc<DagScheduler> {
@@ -42,11 +43,11 @@ impl SparkContext {
     }
 
     #[inline(always)]
-    pub fn make_rdd<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Element = T> {
+    pub fn make_rdd<T: Datum>(self: Arc<Self>, data: &[T]) -> Arc<impl TypedRdd<Element = T>> {
         self.parallelize(data)
     }
 
-    pub fn parallelize<T: Datum>(self: Arc<Self>, data: &[T]) -> impl TypedRdd<Element = T> {
+    pub fn parallelize<T: Datum>(self: Arc<Self>, data: &[T]) -> Arc<impl TypedRdd<Element = T>> {
         let num_slices = self.task_scheduler().default_parallelism();
         self.parallelize_with_slices(data, num_slices)
     }
@@ -55,8 +56,8 @@ impl SparkContext {
         self: Arc<Self>,
         data: &[T],
         num_slices: usize,
-    ) -> impl TypedRdd<Element = T> {
-        ParallelCollection::new(self, data, num_slices)
+    ) -> Arc<impl TypedRdd<Element = T>> {
+        Arc::new(ParallelCollection::new(self, data, num_slices))
     }
 
     pub async fn run_rdd<T, U>(
@@ -67,7 +68,7 @@ impl SparkContext {
     ) -> SparkResult<JobOutput<U>>
     where
         T: Datum,
-        U: Send + 'static,
+        U: Send + Sync + 'static,
     {
         self.dag_scheduler().run(rdd, partitions, f).await
     }
@@ -79,11 +80,10 @@ impl SparkContext {
     ) -> SparkResult<Vec<U>>
     where
         T: Datum,
-        U: Send + 'static,
+        U: Send + Sync + 'static,
     {
         let n = rdd.partitions().len();
-        let partition_results = self.run_rdd(rdd, (0..n).map(PartitionIdx::new).collect(), f).await;
-        todo!()
+        self.run_rdd(rdd, (0..n).map(PartitionIdx::new).collect(), f).await
     }
 
     pub fn interruptible_iterator<T: Datum>(

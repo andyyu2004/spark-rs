@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 newtype_index!(RddId);
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RddRef(#[serde(with = "serde_traitobject")] Arc<dyn Rdd>);
 
 impl Deref for RddRef {
@@ -64,7 +64,12 @@ impl Hash for dyn Rdd {
 }
 
 pub trait Rdd:
-    Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize + 'static
+    Send
+    + Sync
+    + serde_traitobject::Serialize
+    + serde_traitobject::Deserialize
+    + std::fmt::Debug
+    + 'static
 {
     fn id(&self) -> RddId;
 
@@ -118,7 +123,7 @@ pub trait TypedRdd: Rdd {
 }
 
 #[async_trait]
-trait RddAsyncExt: TypedRdd + Sized {
+pub trait TypedRddExt: TypedRdd + Sized {
     async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Element>> {
         let scx = self.scx();
         let partition_iterators = scx.collect_rdd(self, Fn!(|_cx, iter| iter)).await?;
@@ -126,7 +131,7 @@ trait RddAsyncExt: TypedRdd + Sized {
     }
 }
 
-impl<R: TypedRdd> RddAsyncExt for R {
+impl<R: TypedRdd> TypedRddExt for R {
 }
 
 fn _rdd_is_dyn_safe<T>(_rdd: Box<dyn TypedRdd<Element = T>>) {
