@@ -10,7 +10,7 @@ static_assertions::assert_impl_all!(Task: Serialize, Deserialize);
 
 pub type Task = SerdeBox<dyn ErasedTask>;
 
-pub type TaskOutput = SerdeBox<dyn TaskOutputData>;
+pub type TaskOutput = SparkResult<SerdeBox<dyn TaskOutputData>>;
 
 pub trait TaskOutputData: Any + Debug + Send + DowncastSync + 'static {}
 
@@ -67,7 +67,8 @@ where
     fn exec(self: Box<Self>) -> TaskOutput {
         let cx = &mut TaskContext {};
         let iter = self.rdd.into_inner().compute(cx, self.meta.partition);
-        SerdeBox::new((self.mapper)(cx, iter))
+        let output = SerdeBox::new((self.mapper)(cx, iter));
+        Ok(output)
     }
 }
 

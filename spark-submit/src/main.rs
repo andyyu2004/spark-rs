@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use spark::executor::{Executor, LocalExecutor};
+use spark::executor::{Executor, LocalExecutorBackend};
 use std::str::FromStr;
 
 use clap::Parser;
@@ -27,7 +27,8 @@ impl FromStr for MasterUrl {
 async fn main() {
     let opts = Opts::parse();
     let backend = match opts.master_url {
-        MasterUrl::Local { threads: num_threads } => Box::new(LocalExecutor::new(num_threads)),
+        MasterUrl::Local { threads: num_threads } =>
+            Box::new(LocalExecutorBackend::new(num_threads)),
     };
 
     let executor = Executor::new(backend, tokio::io::stdout());

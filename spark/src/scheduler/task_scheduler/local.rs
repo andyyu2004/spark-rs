@@ -12,8 +12,9 @@ impl LocalTaskSchedulerBackend {
     }
 }
 
+#[async_trait]
 impl TaskSchedulerBackend for LocalTaskSchedulerBackend {
-    fn run_task(&self, task: Task) -> TaskHandle {
+    async fn run_task(&self, task: Task) -> SparkResult<TaskHandle> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.pool.spawn(move || {
             let output = task.into_box().exec();
@@ -21,6 +22,6 @@ impl TaskSchedulerBackend for LocalTaskSchedulerBackend {
                 panic!("receiver unexpectedly hung up");
             }
         });
-        rx
+        Ok(rx)
     }
 }

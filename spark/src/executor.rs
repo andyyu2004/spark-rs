@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 pub use backend::*;
-pub use local::LocalExecutor;
+pub use local::LocalExecutorBackend;
 
 pub type ExecutorResult<T> = anyhow::Result<T>;
 

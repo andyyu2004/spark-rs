@@ -83,6 +83,8 @@ where
         self.create_active_job(job_id, stage_id);
         let outputs = self.submit_stage(stage_id).await?;
         let downcasted = outputs.into_iter().map(|output| {
+            // TODO error handling
+            let output = output.unwrap();
             *output.into_box().downcast::<U>().expect("expected output element to be of type `U`")
         });
         Ok(downcasted.collect())

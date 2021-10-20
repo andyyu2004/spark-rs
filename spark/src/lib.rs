@@ -8,9 +8,6 @@
     exact_size_is_empty
 )]
 
-pub mod rdd;
-
-mod config;
 mod context;
 mod data;
 mod dependency;
@@ -20,7 +17,9 @@ mod partition;
 mod serialize;
 mod session;
 
+pub mod config;
 pub mod executor;
+pub mod rdd;
 pub mod scheduler;
 
 pub use context::*;
@@ -33,9 +32,6 @@ pub use session::*;
 
 #[macro_use]
 extern crate async_trait;
-
-#[macro_use]
-extern crate anyhow;
 
 #[macro_use]
 extern crate serde_closure;
