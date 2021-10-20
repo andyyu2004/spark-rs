@@ -23,10 +23,15 @@ impl FromStr for MasterUrl {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let opts = Opts::parse();
     let backend = match opts.master_url {
         MasterUrl::Local { threads: num_threads } => Box::new(LocalExecutor::new(num_threads)),
     };
-    let executor = Executor::new(backend, tokio::io::stdout()).execute(tokio::io::stdin());
+
+    let executor = Executor::new(backend, tokio::io::stdout());
+    if let Err(err) = executor.execute(tokio::io::stdin()).await {
+        todo!("handle error `{}`", err)
+    }
 }
