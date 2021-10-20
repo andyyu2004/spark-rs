@@ -1,4 +1,4 @@
-use crate::config::SparkConfig;
+use crate::config::{MasterUrl, SparkConfig};
 use crate::data::{CloneDatum, Datum};
 use crate::rdd::*;
 use crate::scheduler::*;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub struct SparkContext {
     dag_scheduler_cell: SyncOnceCell<Arc<DagScheduler>>,
-    task_scheduler_cell: SyncOnceCell<Arc<TaskScheduler>>,
+    task_scheduler: Arc<TaskScheduler>,
     rdd_idx: AtomicUsize,
 }
 
@@ -19,24 +19,31 @@ static_assertions::assert_impl_all!(Arc<SparkContext>: Send, Sync);
 
 impl SparkContext {
     pub fn new(config: SparkConfig) -> Arc<Self> {
+        let task_scheduler_backend: Box<dyn TaskSchedulerBackend> = match config.master_url {
+            MasterUrl::Local { num_threads } =>
+                Box::new(LocalTaskSchedulerBackend::new(num_threads)),
+            MasterUrl::Distributed { url } => Box::new(DistributedTaskSchedulerBackend::new(url)),
+        };
+
+        let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));
         let scx = Self {
+            task_scheduler,
             dag_scheduler_cell: Default::default(),
-            task_scheduler_cell: Default::default(),
             rdd_idx: Default::default(),
         };
+
         Arc::new(scx)
     }
 
     pub fn dag_scheduler(&self) -> Arc<DagScheduler> {
         let task_scheduler = self.task_scheduler();
-        Arc::clone(
-            self.dag_scheduler_cell.get_or_init(|| Arc::new(DagScheduler::new(task_scheduler))),
-        )
+        let dag_scheduler =
+            self.dag_scheduler_cell.get_or_init(|| Arc::new(DagScheduler::new(task_scheduler)));
+        Arc::clone(&dag_scheduler)
     }
 
     pub fn task_scheduler(&self) -> Arc<TaskScheduler> {
-        let backend = Box::new(LocalSchedulerBackend::new());
-        Arc::clone(self.task_scheduler_cell.get_or_init(|| Arc::new(TaskScheduler::new(backend))))
+        Arc::clone(&self.task_scheduler)
     }
 
     pub fn next_rdd_id(&self) -> RddId {

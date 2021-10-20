@@ -20,6 +20,7 @@ mod partition;
 mod serialize;
 mod session;
 
+pub mod executor;
 pub mod scheduler;
 
 pub use context::*;

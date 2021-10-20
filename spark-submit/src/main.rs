@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use spark_executor::{Executor, LocalExecutor};
+use spark::executor::{Executor, LocalExecutor};
 use std::str::FromStr;
 
 use clap::Parser;

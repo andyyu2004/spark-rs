@@ -2,7 +2,7 @@ mod distributed;
 mod local;
 
 pub use distributed::DistributedTaskSchedulerBackend;
-pub use local::LocalSchedulerBackend;
+pub use local::LocalTaskSchedulerBackend;
 
 use super::*;
 

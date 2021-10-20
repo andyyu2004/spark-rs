@@ -1,7 +1,6 @@
-use std::sync::Arc;
-
 use crate::config::SparkConfig;
 use crate::SparkContext;
+use std::sync::Arc;
 
 pub struct SparkSession {
     scx: Arc<SparkContext>,
@@ -19,21 +18,11 @@ impl SparkSession {
 
 #[derive(Default)]
 pub struct SparkSessionBuilder {
-    master: Master,
-}
-
-pub enum Master {
-    Local { cores: usize },
-}
-
-impl Default for Master {
-    fn default() -> Self {
-        Self::Local { cores: num_cpus::get() }
-    }
+    config: SparkConfig,
 }
 
 impl SparkSessionBuilder {
     pub fn create(self) -> SparkSession {
-        SparkSession { scx: SparkContext::new(SparkConfig::default()) }
+        SparkSession { scx: SparkContext::new(self.config) }
     }
 }

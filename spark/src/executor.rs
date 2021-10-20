@@ -1,17 +1,16 @@
 mod backend;
-mod local_executor;
+mod local;
 
-pub use backend::*;
-
+use crate::scheduler::{Task, TaskOutput};
 use async_bincode::AsyncBincodeReader;
 use async_trait::async_trait;
 use futures::TryStreamExt;
-use spark_core::scheduler::Task;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-pub use local_executor::LocalExecutor;
+pub use backend::*;
+pub use local::LocalExecutor;
 
 pub type ExecutorResult<T> = anyhow::Result<T>;
 

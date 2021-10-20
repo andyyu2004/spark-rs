@@ -1,6 +1,6 @@
 use super::*;
+use crate::scheduler::TaskOutput;
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use spark_core::scheduler::TaskOutput;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 pub struct LocalExecutor {

@@ -45,19 +45,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-bincode"
-version = "0.6.1"
-source = "git+ssh://git@github.com/andyyu2004/async-bincode#b4274193a18001af3daf39193b53fb249a57afba"
-dependencies = [
- "bincode",
- "byteorder",
- "bytes",
- "futures",
- "serde",
- "tokio",
-]
-
-[[package]]
 name = "async-recursion"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -938,6 +925,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook-registry"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -950,10 +946,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 
 [[package]]
-name = "spark-core"
+name = "spark"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-bincode",
  "async-recursion",
  "async-trait",
  "bincode",
@@ -985,28 +982,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "spark-executor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-bincode 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-trait",
- "bincode",
- "futures",
- "rayon",
- "spark-core",
- "tokio",
-]
-
-[[package]]
 name = "spark-submit"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-bincode 0.6.1 (git+ssh://git@github.com/andyyu2004/async-bincode)",
  "clap",
  "num_cpus",
- "spark-executor",
+ "spark",
  "tokio",
 ]
 
@@ -1078,7 +1060,9 @@ dependencies = [
  "memchr",
  "mio",
  "num_cpus",
+ "once_cell",
  "pin-project-lite",
+ "signal-hook-registry",
  "tokio-macros",
  "winapi",
 ]

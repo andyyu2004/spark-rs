@@ -1,5 +1,3 @@
-use spark_core::scheduler::TaskOutput;
-
 use super::*;
 
 #[async_trait]

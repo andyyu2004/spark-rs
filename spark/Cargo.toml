@@ -1,10 +1,11 @@
 [package]
-name = "spark-core"
+name = "spark"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 anyhow = "1"
+async-bincode = "0.6.1"
 async-recursion = "0.3"
 async-trait = "0.1"
 bincode = "1"
@@ -23,7 +24,7 @@ tracing = "0.1"
 tracing-subscriber = "0.2"
 spark-ds = { path = "../spark-ds" }
 serde = { version = "1", features = ["derive", "rc"] }
-tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "sync", "test-util"] }
+tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "sync", "test-util", "process"] }
 serde_traitobject = { git = "ssh://git@github.com/andyyu2004/serde_traitobject"}
 
 [lib]
