@@ -1,4 +1,5 @@
 use crate::config::SparkConfig;
+use crate::data::{CloneDatum, Datum};
 use crate::rdd::*;
 use crate::scheduler::*;
 use crate::*;
@@ -43,16 +44,19 @@ impl SparkContext {
     }
 
     #[inline(always)]
-    pub fn make_rdd<T: Datum>(self: Arc<Self>, data: &[T]) -> Arc<impl TypedRdd<Element = T>> {
+    pub fn make_rdd<T: CloneDatum>(self: Arc<Self>, data: &[T]) -> Arc<impl TypedRdd<Element = T>> {
         self.parallelize(data)
     }
 
-    pub fn parallelize<T: Datum>(self: Arc<Self>, data: &[T]) -> Arc<impl TypedRdd<Element = T>> {
+    pub fn parallelize<T: CloneDatum>(
+        self: Arc<Self>,
+        data: &[T],
+    ) -> Arc<impl TypedRdd<Element = T>> {
         let num_slices = self.task_scheduler().default_parallelism();
         self.parallelize_with_slices(data, num_slices)
     }
 
-    pub fn parallelize_with_slices<T: Datum>(
+    pub fn parallelize_with_slices<T: CloneDatum>(
         self: Arc<Self>,
         data: &[T],
         num_slices: usize,
@@ -67,8 +71,8 @@ impl SparkContext {
         f: impl PartitionMapper<T, U>,
     ) -> SparkResult<JobOutput<U>>
     where
-        T: Datum,
-        U: Send + Sync + 'static,
+        T: CloneDatum,
+        U: Datum,
     {
         self.dag_scheduler().run(rdd, partitions, f).await
     }
@@ -79,14 +83,14 @@ impl SparkContext {
         f: impl PartitionMapper<T, U>,
     ) -> SparkResult<Vec<U>>
     where
-        T: Datum,
-        U: Send + Sync + 'static,
+        T: CloneDatum,
+        U: Datum,
     {
         let n = rdd.partitions().len();
         self.run_rdd(rdd, (0..n).map(PartitionIdx::new).collect(), f).await
     }
 
-    pub fn interruptible_iterator<T: Datum>(
+    pub fn interruptible_iterator<T: CloneDatum>(
         self: Arc<Self>,
         iter: impl Iterator<Item = T> + 'static,
     ) -> Box<dyn Iterator<Item = T>> {

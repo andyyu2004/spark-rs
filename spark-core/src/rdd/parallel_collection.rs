@@ -1,4 +1,5 @@
 use super::*;
+use crate::data::CloneDatum;
 use indexed_vec::Idx;
 use serde_derive::{Deserialize, Serialize};
 use std::sync::{Arc, Weak};
@@ -17,7 +18,7 @@ pub struct ParallelCollectionPartition<T> {
     data: Arc<Vec<T>>,
 }
 
-impl<T: Datum> ParallelCollection<T> {
+impl<T: CloneDatum> ParallelCollection<T> {
     pub fn new(scx: Arc<SparkContext>, data: &[T], num_slices: usize) -> Self {
         assert!(num_slices > 0, "require at least one slice");
         let partitions = data
@@ -36,7 +37,7 @@ impl<T> std::fmt::Debug for ParallelCollection<T> {
     }
 }
 
-impl<T: Datum> Rdd for ParallelCollection<T> {
+impl<T: CloneDatum> Rdd for ParallelCollection<T> {
     fn id(&self) -> RddId {
         self.rdd_id
     }
@@ -54,7 +55,7 @@ impl<T: Datum> Rdd for ParallelCollection<T> {
     }
 }
 
-impl<T: Datum> TypedRdd for ParallelCollection<T> {
+impl<T: CloneDatum> TypedRdd for ParallelCollection<T> {
     type Element = T;
 
     fn as_untyped(self: Arc<Self>) -> RddRef {
@@ -63,9 +64,9 @@ impl<T: Datum> TypedRdd for ParallelCollection<T> {
 
     fn compute(
         self: Arc<Self>,
-        _cx: TaskContext,
+        _cx: &mut TaskContext,
         idx: PartitionIdx,
-    ) -> Box<dyn Iterator<Item = Self::Element>> {
+    ) -> SparkIteratorRef<Self::Element> {
         let partition = &self.partitions[idx.index()];
         let data = Arc::clone(&partition.data);
         Box::new((0..data.len()).map(move |i| data[i].clone()))

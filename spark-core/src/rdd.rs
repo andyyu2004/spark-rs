@@ -4,6 +4,7 @@ mod parallel_collection;
 pub use parallel_collection::ParallelCollection;
 
 use self::map::Map;
+use crate::serialize::SerdeArc;
 use crate::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -49,7 +50,7 @@ impl PartialEq for RddRef {
     }
 }
 
-pub type TypedRddRef<T> = Arc<dyn TypedRdd<Element = T>>;
+pub type TypedRddRef<T> = SerdeArc<dyn TypedRdd<Element = T>>;
 
 impl PartialEq for dyn Rdd {
     fn eq(&self, other: &Self) -> bool {
@@ -96,7 +97,7 @@ pub trait Rdd:
 }
 
 pub trait TypedRdd: Rdd {
-    type Element: Datum;
+    type Element: CloneDatum;
 
     /// Convert the `Arc<TypedRdd>` to a `RddRef`
     /// Can be implemented as the following.
@@ -110,9 +111,9 @@ pub trait TypedRdd: Rdd {
 
     fn compute(
         self: Arc<Self>,
-        ctxt: TaskContext,
+        cx: &mut TaskContext,
         split: PartitionIdx,
-    ) -> Box<dyn Iterator<Item = Self::Element>>;
+    ) -> SparkIteratorRef<Self::Element>;
 
     fn map<F>(self: Arc<Self>, f: F) -> Map<Self, F>
     where
@@ -120,13 +121,22 @@ pub trait TypedRdd: Rdd {
     {
         Map::new(self, f)
     }
+
+    fn as_typed_ref(self: Arc<Self>) -> TypedRddRef<Self::Element>
+    where
+        Self: Sized,
+    {
+        SerdeArc::from(self as Arc<dyn TypedRdd<Element = Self::Element>>)
+    }
 }
 
 #[async_trait]
 pub trait TypedRddExt: TypedRdd + Sized {
     async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Element>> {
         let scx = self.scx();
-        let partition_iterators = scx.collect_rdd(self, Fn!(|_cx, iter| iter)).await?;
+        let f = Fn!(|_cx: &mut TaskContext, iter: SparkIteratorRef<Self::Element>| iter
+            .collect::<Vec<Self::Element>>());
+        let partition_iterators = scx.collect_rdd(self.as_typed_ref(), f).await?;
         Ok(partition_iterators.into_iter().flatten().collect())
     }
 }

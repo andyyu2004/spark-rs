@@ -11,8 +11,9 @@ use self::event::*;
 use self::job::*;
 use self::stage::*;
 use self::task::*;
+use crate::data::Datum;
 use crate::rdd::{RddRef, TypedRddRef};
-use crate::serialize::SerdeFn;
+use crate::serialize::{SerdeArc, SerdeFn};
 use crate::*;
 use dashmap::DashSet;
 use indexed_vec::Idx;
@@ -20,9 +21,9 @@ use spark_ds::sync::{ConcurrentIndexVec, MapRef};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::task::{JoinHandle, LocalSet};
+use tokio::task::JoinHandle;
 
-pub trait PartitionMapper<T, U> = SerdeFn(TaskContext, SparkIterator<T>) -> U;
+pub trait PartitionMapper<T, U> = SerdeFn(&mut TaskContext, SparkIteratorRef<T>) -> U;
 
 static_assertions::assert_impl_all!(Arc<DagScheduler>: Send, Sync);
 
@@ -68,12 +69,12 @@ impl DagScheduler {
         f: impl PartitionMapper<T, U>,
     ) -> SparkResult<JobOutput<U>>
     where
-        T: Datum,
-        U: Send + Sync + 'static,
+        T: CloneDatum,
+        U: Datum,
     {
         assert!(!partitions.is_empty(), "handle empty partitions");
-        let handle = self.submit_job(rdd, partitions, Arc::new(f)).await?;
-        Ok(handle.join_handle.await?)
+        let handle = self.submit_job(rdd, partitions, Arc::new(f)).await;
+        handle.join_handle.await?
     }
 
     pub(crate) async fn submit_job<T, U>(
@@ -81,21 +82,15 @@ impl DagScheduler {
         rdd: TypedRddRef<T>,
         partitions: Partitions,
         mapper: Arc<impl PartitionMapper<T, U>>,
-    ) -> SparkResult<JobHandle<JobOutput<U>>>
+    ) -> JobHandle<SparkResult<JobOutput<U>>>
     where
-        T: Datum,
-        U: Send + Sync + 'static,
+        T: CloneDatum,
+        U: Datum,
     {
         let job_id = self.next_job_id();
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        tx.send(SchedulerEvent::JobSubmitted(JobSubmittedEvent {
-            rdd: rdd.as_untyped(),
-            partitions,
-            job_id,
-        }))
-        .map_err(|_| anyhow!("failed to send `JobSubmitted` event"))?;
-        let join_handle = JobContext::new(self, rx, mapper).start();
-        Ok(JobHandle::new(job_id, tx, join_handle))
+        let join_handle =
+            JobContext::new(self, SerdeArc::clone(&rdd), mapper).run_job(rdd, partitions, job_id);
+        JobHandle::new(job_id, join_handle)
     }
 
     fn active_job(&self, stage: StageId) -> MapRef<'_, JobId, ActiveJob> {
@@ -103,23 +98,22 @@ impl DagScheduler {
         self.active_jobs.get(*job_id)
     }
 
+    #[instrument(skip(self))]
     fn find_uncomputed_partitions(&self, stage_id: StageId) -> Partitions {
         let stage = self.stages.get(stage_id);
         let active_job = self.active_job(stage_id);
         match &stage.kind {
             StageKind::ShuffleMap => todo!(),
             StageKind::Result { partitions } => (0..partitions.len())
-                .filter(|&i| active_job.finished.contains(i))
+                .filter(|&i| !active_job.finished.contains(i))
                 .map(PartitionIdx::new)
                 .collect(),
         }
     }
 
-    fn stage_exists(&self, stage_id: StageId) -> bool {
-        self.stages.contains_key(stage_id)
-    }
-
+    #[instrument(skip(self))]
     fn create_result_stage(&self, rdd: RddRef, partitions: Partitions, job_id: JobId) -> StageId {
+        assert!(!partitions.is_empty());
         let shuffle_deps = rdd.immediate_shuffle_dependencies();
         let parents = self.create_parent_stages(job_id, &shuffle_deps);
         let mk_stage = |stage_id| Stage {
@@ -158,8 +152,10 @@ impl DagScheduler {
         stage_id
     }
 
+    #[instrument(skip(self, mk_stage))]
     fn alloc_stage(&self, mk_stage: impl FnOnce(StageId) -> Stage) -> StageId {
         let stage_id = self.next_stage_id();
+        trace!(next_stage_id = ?stage_id);
         assert!(self.stages.insert(stage_id, mk_stage(stage_id).into()).is_none());
         stage_id
     }
@@ -175,9 +171,11 @@ impl DagScheduler {
             .collect()
     }
 
-    fn create_active_job(self: Arc<Self>, job_id: JobId, stage_id: StageId) {
+    #[instrument(skip(self))]
+    fn create_active_job(self: &Arc<Self>, job_id: JobId, stage_id: StageId) {
+        trace!("creating active job");
         self.stage_to_active_jobs.entry(stage_id).or_default().push(job_id);
-        let active_job = ActiveJob::new(Arc::clone(&self), job_id, stage_id);
+        let active_job = ActiveJob::new(Arc::clone(self), job_id, stage_id);
         assert!(self.active_jobs.insert(job_id, active_job).is_none());
     }
 
@@ -189,3 +187,6 @@ impl DagScheduler {
         JobId::new(self.job_idx.fetch_add(1, Ordering::SeqCst))
     }
 }
+
+#[cfg(test)]
+mod tests;

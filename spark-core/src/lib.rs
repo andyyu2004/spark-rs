@@ -1,6 +1,7 @@
 #![feature(
     new_uninit,
     once_cell,
+    type_name_of_val,
     trait_alias,
     arbitrary_self_types,
     unboxed_closures,
@@ -21,7 +22,7 @@ mod serialize;
 mod session;
 
 pub use context::*;
-pub use data::Datum;
+pub use data::*;
 pub use dependency::*;
 pub use error::{SparkError, SparkResult};
 pub use iter::*;

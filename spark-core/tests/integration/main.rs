@@ -12,7 +12,7 @@ fn new() -> (SparkSession, Arc<SparkContext>) {
 #[tokio::test]
 async fn it_works() -> SparkResult<()> {
     let (_spark, scx) = new();
-    let rdd = scx.parallelize(&[3]);
-    rdd.collect().await?;
+    let rdd = scx.parallelize(&[1, 2, 3, 4]);
+    assert_eq!(rdd.collect().await?, vec![1, 2, 3, 4]);
     Ok(())
 }

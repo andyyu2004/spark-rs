@@ -1,3 +1,6 @@
+pub type SerdeBox<T> = serde_traitobject::Box<T>;
+pub type SerdeArc<T> = serde_traitobject::Arc<T>;
+
 pub trait SerdeFn<Args>:
     Fn<Args> + Send + Sync + Clone + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
 {

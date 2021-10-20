@@ -186,6 +186,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "downcast-rs"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -749,8 +755,7 @@ dependencies = [
 [[package]]
 name = "serde_traitobject"
 version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "694cc56ffdfebefcc6ab6c49e101cd3a68192f01e048451f3616ce8b987e45e5"
+source = "git+ssh://git@github.com/andyyu2004/serde_traitobject#2a0294c455440e007a45184411dd4aec0b7ca78e"
 dependencies = [
  "erased-serde",
  "metatype",
@@ -788,6 +793,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "dashmap",
+ "downcast-rs",
  "fixedbitset",
  "futures",
  "indexed_vec",

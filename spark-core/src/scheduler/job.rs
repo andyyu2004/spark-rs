@@ -1,3 +1,5 @@
+use crate::serialize::SerdeArc;
+
 use super::*;
 use async_recursion::async_recursion;
 use fixedbitset::FixedBitSet;
@@ -33,74 +35,65 @@ impl ActiveJob {
 }
 
 pub struct JobHandle<T> {
-    pub(super) tx: SchedulerEventSender,
     pub(super) job_id: JobId,
     pub(super) join_handle: JoinHandle<T>,
 }
 
 impl<T> JobHandle<T> {
-    pub fn new(job_id: JobId, tx: SchedulerEventSender, join_handle: JoinHandle<T>) -> Self {
-        Self { join_handle, tx, job_id }
+    pub fn new(job_id: JobId, join_handle: JoinHandle<T>) -> Self {
+        Self { join_handle, job_id }
     }
 }
 
 pub(super) struct JobContext<T, U, F> {
     scheduler: Arc<DagScheduler>,
-    rx: SchedulerEventReceiver,
     mapper: Arc<F>,
+    final_rdd: TypedRddRef<T>,
     _t: PhantomData<T>,
     _u: PhantomData<U>,
 }
 
 impl<T, U, F> JobContext<T, U, F>
 where
-    T: Datum,
-    U: Send + Sync + 'static,
+    T: CloneDatum,
+    U: Datum,
     F: PartitionMapper<T, U>,
 {
-    pub fn new(scheduler: Arc<DagScheduler>, rx: SchedulerEventReceiver, mapper: Arc<F>) -> Self {
-        Self { scheduler, rx, mapper, _t: PhantomData, _u: PhantomData }
+    pub fn new(scheduler: Arc<DagScheduler>, final_rdd: TypedRddRef<T>, mapper: Arc<F>) -> Self {
+        Self { scheduler, final_rdd, mapper, _t: PhantomData, _u: PhantomData }
     }
 
-    pub fn start(self) -> JoinHandle<JobOutput<U>> {
-        // LocalSet::new().spawn_local(self.process_job())
-        tokio::spawn(self.process_job())
+    pub fn run_job(
+        self,
+        rdd: TypedRddRef<T>,
+        partitions: Partitions,
+        job_id: JobId,
+    ) -> JoinHandle<SparkResult<JobOutput<U>>> {
+        tokio::spawn(self.process_job(rdd, partitions, job_id))
     }
 
     #[instrument(skip(self))]
-    async fn process_job(mut self) -> JobOutput<U> {
-        while let Some(event) = self.rx.recv().await {
-            info!("recv scheduler event: {:?}", event);
-            if let Err(_err) = self.handle_event(event).await {
-                todo!("handle error while processing new job")
-            }
-        }
-        todo!()
-    }
-
-    async fn handle_event(&self, event: SchedulerEvent) -> SparkResult<()> {
-        match event {
-            SchedulerEvent::JobSubmitted(event) => self.handle_job_submitted(event).await,
-        }
-    }
-
-    async fn handle_job_submitted(
-        &self,
-        JobSubmittedEvent { rdd, partitions, job_id }: JobSubmittedEvent,
-    ) -> SparkResult<()> {
-        let stage_id = self.create_result_stage(rdd, partitions, job_id);
-        Arc::clone(&self).create_active_job(job_id, stage_id);
-        self.submit_stage(stage_id).await
+    async fn process_job(
+        self,
+        rdd: TypedRddRef<T>,
+        partitions: Partitions,
+        job_id: JobId,
+    ) -> SparkResult<JobOutput<U>> {
+        let stage_id = self.create_result_stage(rdd.into_inner().as_untyped(), partitions, job_id);
+        self.create_active_job(job_id, stage_id);
+        let outputs = self.submit_stage(stage_id).await?;
+        let downcasted = outputs.into_iter().map(|output| {
+            *output.into_box().downcast::<U>().expect("expected output element to be of type `U`")
+        });
+        Ok(downcasted.collect())
     }
 
     /// Submits a stage to be executed
     /// This is a noop if the stage already exists
     #[async_recursion]
-    async fn submit_stage(&self, stage_id: StageId) -> SparkResult<()> {
-        if self.stage_exists(stage_id) {
-            return Ok(());
-        }
-
+    #[instrument(skip(self))]
+    async fn submit_stage(&self, stage_id: StageId) -> SparkResult<Vec<TaskOutput>> {
+        trace!("submitting stage");
         // The id of the oldest job that depends on this stage
         let job_id =
             match self.stage_to_active_jobs.get_opt(stage_id).and_then(|jobs| jobs.get(0).copied())
@@ -109,37 +102,40 @@ where
                 None => todo!("abort stage"),
             };
 
+        trace!(oldest_dependent_job_id = ?job_id);
+
         self.submit_parent_stages(stage_id).await?;
 
         let stage = self.stages.get(stage_id);
         let uncomputed_partitions = self.find_uncomputed_partitions(stage_id);
+        trace!(?uncomputed_partitions);
+
         self.running_stages.insert(stage_id);
 
-        let bytes = match &stage.kind {
-            StageKind::ShuffleMap => todo!(),
-            StageKind::Result { .. } =>
-                Arc::new(bincode::serialize(&(&stage.rdd(), &self.mapper))?),
-        };
         let tasks = match &stage.kind {
             StageKind::ShuffleMap => todo!(),
             StageKind::Result { partitions: _ } =>
-                uncomputed_partitions.into_iter().map(move |partition| Task {
-                    stage_id,
-                    job_id,
-                    partition,
-                    kind: TaskKind::Result(Arc::clone(&bytes)),
+                uncomputed_partitions.into_iter().map(move |partition| {
+                    ResultTask::new(
+                        TaskMeta { stage_id, job_id, partition },
+                        SerdeArc::from(Arc::clone(&self.final_rdd)),
+                        Arc::clone(&self.mapper),
+                    )
+                    .boxed() as Task
                 }),
         };
 
         if tasks.is_empty() {
+            trace!("completed all tasks for stage");
             todo!()
         } else {
             let task_set = TaskSet::new(job_id, stage_id, tasks);
-            self.task_scheduler.submit_tasks(task_set).await;
+            let outputs = self.task_scheduler.submit_tasks(task_set).await?;
+            Ok(outputs)
         }
-        Ok(())
     }
 
+    #[instrument(skip(self))]
     pub(crate) async fn submit_parent_stages(&self, stage_id: StageId) -> SparkResult<()> {
         let stage = self.stages.get(stage_id);
         let mut rdds = vec![stage.rdd()];

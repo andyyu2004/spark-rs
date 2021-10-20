@@ -1,34 +1,72 @@
 use super::*;
-use serde::{Deserialize, Serialize};
+use crate::serialize::SerdeBox;
+use downcast_rs::{impl_downcast, DowncastSync};
+use serde_derive::{Deserialize, Serialize};
+use serde_traitobject::{Any, Deserialize, Serialize};
+use std::fmt::Debug;
+use std::marker::PhantomData;
+
+pub type Task = SerdeBox<dyn ErasedTask>;
+
+pub type TaskOutput = SerdeBox<dyn TaskOutputData>;
+
+pub trait TaskOutputData: Any + Debug + Send + DowncastSync + 'static {}
+
+impl_downcast!(TaskOutputData);
+
+impl<T> TaskOutputData for T where T: Any + Debug + DowncastSync + Send + 'static
+{
+}
 
 #[derive(Deserialize, Serialize)]
-pub struct Task {
+pub struct TaskMeta {
     pub(super) stage_id: StageId,
     pub(super) partition: PartitionIdx,
     pub(super) job_id: JobId,
-    pub(super) kind: TaskKind,
 }
 
-impl Task {
-    pub fn run(&self) {
-        match &self.kind {
-            TaskKind::Shuffle() => todo!(),
-            TaskKind::Result(bytes) => {
-                let (rdd, mapper) =
-                    bincode::deserialize::<(RddRef, Arc<dyn serde_traitobject::Fn()>)>(bytes)
-                        .expect("unexpectedly failed to deserialize task contents");
-                todo!();
-            }
-        }
+pub trait ErasedTask: Serialize + Deserialize + Send + Sync + 'static {
+    fn exec(self: Box<Self>) -> TaskOutput;
+
+    fn boxed(self) -> SerdeBox<Self>
+    where
+        Self: Sized,
+    {
+        SerdeBox::new(self)
     }
 }
 
 #[derive(Deserialize, Serialize)]
-pub enum TaskKind {
-    Shuffle(),
-    /// The bytes should be deserialized as (RddRef, PartitionMapperRef<T, U>)
-    /// where`RddRef` implements `TypedRddRef<T>`
-    Result(Arc<Vec<u8>>),
+pub struct ResultTask<T: 'static, U, F> {
+    meta: TaskMeta,
+    rdd: TypedRddRef<T>,
+    mapper: Arc<F>,
+    _t: PhantomData<T>,
+    _u: PhantomData<U>,
+}
+
+impl<T, U, F> ResultTask<T, U, F>
+where
+    T: CloneDatum,
+    U: Datum,
+    F: PartitionMapper<T, U>,
+{
+    pub fn new(meta: TaskMeta, rdd: TypedRddRef<T>, mapper: Arc<F>) -> Self {
+        Self { meta, rdd, mapper, _t: PhantomData, _u: PhantomData }
+    }
+}
+
+impl<T, U, F> ErasedTask for ResultTask<T, U, F>
+where
+    T: CloneDatum,
+    U: Datum,
+    F: PartitionMapper<T, U>,
+{
+    fn exec(self: Box<Self>) -> TaskOutput {
+        let cx = &mut TaskContext {};
+        let iter = self.rdd.into_inner().compute(cx, self.meta.partition);
+        SerdeBox::new((self.mapper)(cx, iter))
+    }
 }
 
 pub struct TaskSet<I> {
@@ -44,27 +82,4 @@ where
     pub fn new(job_id: JobId, stage_id: StageId, tasks: I) -> Self {
         Self { job_id, stage_id, tasks }
     }
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ResultTask<T: Datum, U: Datum, F>
-where
-    F: Fn((TaskContext, Box<dyn Iterator<Item = T>>)) -> U
-        + 'static
-        + Send
-        + Sync
-        + serde_traitobject::Serialize
-        + serde_traitobject::Deserialize
-        + Clone,
-{
-    pub task_id: usize,
-    pub run_id: usize,
-    pub stage_id: usize,
-    pinned: bool,
-    #[serde(with = "serde_traitobject")]
-    pub rdd: Arc<dyn crate::rdd::TypedRdd<Element = T>>,
-    pub func: Arc<F>,
-    pub partition: usize,
-    pub output_id: usize,
-    _marker: std::marker::PhantomData<T>,
 }

@@ -10,10 +10,12 @@ impl TaskScheduler {
         Self { backend }
     }
 
-    pub async fn submit_tasks<I: IntoIterator<Item = Task>>(&self, task_set: TaskSet<I>) {
-        let rxs =
-            task_set.tasks.into_iter().map(|task| self.backend.run_task(task)).collect::<Vec<_>>();
-        futures::future::join_all(rxs).await;
+    pub async fn submit_tasks<I: IntoIterator<Item = Task>>(
+        &self,
+        task_set: TaskSet<I>,
+    ) -> SparkResult<Vec<TaskOutput>> {
+        let rxs = task_set.tasks.into_iter().map(|task| self.backend.run_task(task));
+        Ok(futures::future::try_join_all(rxs).await?)
     }
 
     pub fn default_parallelism(&self) -> usize {
@@ -21,7 +23,7 @@ impl TaskScheduler {
     }
 }
 
-pub type TaskHandle = tokio::sync::oneshot::Receiver<()>;
+pub type TaskHandle = tokio::sync::oneshot::Receiver<TaskOutput>;
 
 pub trait TaskSchedulerBackend: Send + Sync {
     fn run_task(&self, task: Task) -> TaskHandle;
@@ -41,8 +43,10 @@ impl TaskSchedulerBackend for LocalSchedulerBackend {
     fn run_task(&self, task: Task) -> TaskHandle {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.pool.spawn(move || {
-            task.run();
-            tx.send(()).expect("receiver hang up");
+            let output = task.into_box().exec();
+            if tx.send(output).is_err() {
+                panic!("receiver unexpectedly hung up");
+            }
         });
         rx
     }

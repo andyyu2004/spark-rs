@@ -1,3 +1,5 @@
+use crate::data::CloneDatum;
+
 use super::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -43,8 +45,8 @@ impl<R: Rdd + Serialize + DeserializeOwned, F: Datum> Rdd for Map<R, F> {
 impl<R, F, T> TypedRdd for Map<R, F>
 where
     R: TypedRdd + Serialize + DeserializeOwned,
-    T: Datum,
-    F: Fn(R::Element) -> T + Datum,
+    T: CloneDatum,
+    F: Fn(R::Element) -> T + CloneDatum,
 {
     type Element = T;
 
@@ -54,9 +56,9 @@ where
 
     fn compute(
         self: Arc<Self>,
-        ctxt: TaskContext,
+        cx: &mut TaskContext,
         split: PartitionIdx,
-    ) -> Box<dyn Iterator<Item = Self::Element>> {
-        Box::new(Arc::clone(&self.rdd).compute(ctxt, split).map(self.f.clone()))
+    ) -> SparkIteratorRef<Self::Element> {
+        Box::new(Arc::clone(&self.rdd).compute(cx, split).map(self.f.clone()))
     }
 }
