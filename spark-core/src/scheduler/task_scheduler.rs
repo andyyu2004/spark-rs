@@ -1,5 +1,10 @@
+mod distributed;
+mod local;
+
+pub use distributed::DistributedTaskSchedulerBackend;
+pub use local::LocalSchedulerBackend;
+
 use super::*;
-use rayon::{ThreadPool, ThreadPoolBuilder};
 
 pub struct TaskScheduler {
     backend: Box<dyn TaskSchedulerBackend>,
@@ -27,27 +32,4 @@ pub type TaskHandle = tokio::sync::oneshot::Receiver<TaskOutput>;
 
 pub trait TaskSchedulerBackend: Send + Sync {
     fn run_task(&self, task: Task) -> TaskHandle;
-}
-
-pub struct LocalSchedulerBackend {
-    pool: ThreadPool,
-}
-
-impl LocalSchedulerBackend {
-    pub fn new() -> Self {
-        Self { pool: ThreadPoolBuilder::default().build().unwrap() }
-    }
-}
-
-impl TaskSchedulerBackend for LocalSchedulerBackend {
-    fn run_task(&self, task: Task) -> TaskHandle {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.pool.spawn(move || {
-            let output = task.into_box().exec();
-            if tx.send(output).is_err() {
-                panic!("receiver unexpectedly hung up");
-            }
-        });
-        rx
-    }
 }

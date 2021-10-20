@@ -6,6 +6,8 @@ use serde_traitobject::{Any, Deserialize, Serialize};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+static_assertions::assert_impl_all!(Task: Serialize, Deserialize);
+
 pub type Task = SerdeBox<dyn ErasedTask>;
 
 pub type TaskOutput = SerdeBox<dyn TaskOutputData>;
@@ -69,6 +71,7 @@ where
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct TaskSet<I> {
     pub(super) job_id: JobId,
     pub(super) stage_id: StageId,

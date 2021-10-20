@@ -1,0 +1,13 @@
+[package]
+name = "spark-submit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+clap = "3.0.0-beta.5"
+num_cpus = "1"
+spark-executor = { path = "../spark-executor" }
+async-bincode = { git = "ssh://git@github.com/andyyu2004/async-bincode" }
+tokio = { version = "1.1", features = ["io-util", "io-std"] }
+

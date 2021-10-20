@@ -17,9 +17,10 @@ mod dependency;
 mod error;
 mod iter;
 mod partition;
-mod scheduler;
 mod serialize;
 mod session;
+
+pub mod scheduler;
 
 pub use context::*;
 pub use data::*;

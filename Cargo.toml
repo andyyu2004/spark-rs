@@ -2,4 +2,6 @@
 members = [
     "spark-core",
     "spark-ds",
+    "spark-executor",
+    "spark-submit",
 ]
