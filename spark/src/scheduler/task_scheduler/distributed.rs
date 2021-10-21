@@ -7,14 +7,15 @@ use futures::{SinkExt, TryStreamExt};
 use std::lazy::SyncOnceCell;
 use std::sync::Once;
 use tokio::io::{DuplexStream, WriteHalf};
-use tokio::sync::Mutex;
+
+pub const TASK_LIMIT: usize = 100;
 
 type BincodeTaskWriter = AsyncBincodeWriter<WriteHalf<DuplexStream>, Task, AsyncDestination>;
 
 pub struct DistributedTaskSchedulerBackend {
     executor: Arc<Executor>,
     txs: DashMap<TaskId, TaskSender>,
-    writer: SyncOnceCell<Mutex<BincodeTaskWriter>>,
+    task_dispatcher: SyncOnceCell<tokio::sync::mpsc::Sender<Task>>,
 }
 
 impl DistributedTaskSchedulerBackend {
@@ -24,7 +25,7 @@ impl DistributedTaskSchedulerBackend {
                 Box::new(LocalExecutorBackend::new(num_threads)),
         };
         let executor = Executor::new(backend);
-        Self { executor, writer: Default::default(), txs: Default::default() }
+        Self { executor, task_dispatcher: Default::default(), txs: Default::default() }
     }
 
     #[instrument(skip(self))]
@@ -32,12 +33,24 @@ impl DistributedTaskSchedulerBackend {
         trace!("start distributed task_scheduler backend");
         let (stream, executor_stream) = tokio::io::duplex(8192);
         let (reader, writer) = tokio::io::split(stream);
-        let writer = AsyncBincodeWriter::from(writer).for_async();
-        self.writer.set(Mutex::new(writer)).unwrap();
+
+        let mut writer = AsyncBincodeWriter::from(writer).for_async();
+        let (task_dispatcher, mut task_receiver) = tokio::sync::mpsc::channel(TASK_LIMIT);
+        // The reason for handling the sending of the writer over a separate task is because
+        // `send` on a channel sender only requires `&self` while `send` on the `Sink` requires `&mut self`,
+        // and so if we were to send on the Sink directly from `run_task` we would need a mutex.
+        let dispatcher_handle = tokio::spawn(async move {
+            while let Some(task) = task_receiver.recv().await {
+                writer.send(task).await?;
+            }
+            Ok::<_, SparkError>(())
+        });
+
+        self.task_dispatcher.set(task_dispatcher).unwrap();
         let (executor_reader, executor_writer) = tokio::io::split(executor_stream);
 
         let executor = Arc::clone(&self.executor);
-        let handle = tokio::spawn(executor.execute(executor_reader, executor_writer));
+        let executor_handle = tokio::spawn(executor.execute(executor_reader, executor_writer));
         let stream = AsyncBincodeReader::<_, TaskOutput>::from(reader);
         stream
             .try_for_each(|output @ (task_id, _)| {
@@ -49,7 +62,9 @@ impl DistributedTaskSchedulerBackend {
                 }
             })
             .await?;
-        handle.await??;
+
+        dispatcher_handle.await??;
+        executor_handle.await??;
         Ok(())
     }
 }
@@ -70,10 +85,10 @@ impl TaskSchedulerBackend for DistributedTaskSchedulerBackend {
 
         loop {
             // Loop until the task spawned above has had a chance to run the initialization
-            match self.writer.get() {
-                Some(writer) => {
-                    let mut writer = writer.lock().await;
-                    break writer.send(task).await?;
+            match self.task_dispatcher.get() {
+                Some(dispatcher) => {
+                    dispatcher.send(task).await.unwrap();
+                    break;
                 }
                 None => tokio::task::yield_now().await,
             }
