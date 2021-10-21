@@ -2,24 +2,27 @@ mod backend;
 mod local;
 
 use crate::scheduler::{Task, TaskOutput};
-use async_bincode::{AsyncBincodeReader, AsyncBincodeWriter};
+use async_bincode::AsyncBincodeWriter;
 use async_trait::async_trait;
-use futures::{SinkExt, TryStreamExt};
+use bincode::Options;
+use futures::SinkExt;
+use rayon::ThreadPoolBuilder;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, BufReader};
 use tokio::sync::Mutex;
 
 pub use backend::*;
 pub use local::LocalExecutorBackend;
 
 pub type ExecutorResult<T> = anyhow::Result<T>;
+pub type ExecutorError = anyhow::Error;
 
 pub struct Executor {
-    backend: Box<dyn ExecutorBackend>,
+    backend: Arc<dyn ExecutorBackend>,
 }
 
 impl Executor {
-    pub fn new(backend: Box<dyn ExecutorBackend>) -> Arc<Self> {
+    pub fn new(backend: Arc<dyn ExecutorBackend>) -> Arc<Self> {
         Arc::new(Self { backend })
     }
 
@@ -30,11 +33,34 @@ impl Executor {
         writer: impl AsyncWrite + Send + Unpin + 'static,
     ) -> ExecutorResult<()> {
         let handle = tokio::spawn(Arc::clone(&self).send_outputs(writer));
-        let stream = AsyncBincodeReader::<_, Task>::from(reader);
-        stream
-            .map_err(|err| err.into())
-            .try_for_each_concurrent(None, |task| self.backend.execute_task(task))
-            .await?;
+
+        let pool = ThreadPoolBuilder::new().build().unwrap();
+        let mut reader = BufReader::new(reader);
+        loop {
+            if reader.fill_buf().await?.is_empty() {
+                break;
+            }
+            let size = reader.read_u32().await?;
+            let mut buf = vec![0; size as usize];
+            reader.read_exact(&mut buf).await?;
+
+            let backend = Arc::clone(&self.backend);
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            tokio::spawn(async move {
+                let task = rx.await?;
+                backend.execute_task(task).await?;
+                Ok::<_, ExecutorError>(())
+            });
+
+            pool.spawn(move || {
+                let task = bincode::options()
+                    .with_limit(u32::max_value() as u64)
+                    .allow_trailing_bytes()
+                    .deserialize::<Task>(&buf[..])
+                    .unwrap();
+                tx.send(task).unwrap();
+            });
+        }
 
         handle.await??;
         Ok(())
