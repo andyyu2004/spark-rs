@@ -1,6 +1,9 @@
+#![feature(once_cell)]
+
 use spark::config::MasterUrl;
 use spark::rdd::TypedRddExt;
 use spark::{SparkContext, SparkResult, SparkSession};
+use std::lazy::SyncLazy;
 use std::sync::Arc;
 
 fn new(master_url: MasterUrl) -> (SparkSession, Arc<SparkContext>) {
@@ -20,18 +23,20 @@ fn new_distributed() -> (SparkSession, Arc<SparkContext>) {
     })
 }
 
+static DATA: SyncLazy<Vec<u32>> = SyncLazy::new(|| (0..1024000).collect());
+
 #[tokio::test]
 async fn it_works_local() -> SparkResult<()> {
     let (_spark, scx) = new_local();
-    let rdd = scx.parallelize(&[1, 2, 3, 4]);
-    assert_eq!(rdd.collect().await?, vec![1, 2, 3, 4]);
+    let rdd = scx.parallelize(&DATA);
+    assert_eq!(rdd.collect().await?, *DATA);
     Ok(())
 }
 
 #[tokio::test]
 async fn distributed_it_works() -> SparkResult<()> {
     let (_spark, scx) = new_distributed();
-    let rdd = scx.parallelize(&[1, 2, 3, 4]);
-    assert_eq!(rdd.collect().await?, vec![1, 2, 3, 4]);
+    let rdd = scx.parallelize(&DATA);
+    assert_eq!(rdd.collect().await?, *DATA);
     Ok(())
 }

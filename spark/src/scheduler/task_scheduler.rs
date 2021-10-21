@@ -27,11 +27,11 @@ impl TaskScheduler {
         task_set: TaskSet<I>,
     ) -> SparkResult<Vec<TaskOutput>> {
         trace!("start submit_tasks");
-        // This is fairly convoluted
+        // This is a fairly convoluted section.
         // - Firstly, we iterate over each task in the task_set
         //   yielding an iterator over futures that each yield a `SparkResult<TaskHandle>`
         let iter = task_set.tasks.into_iter().map(|task| Arc::clone(&self.backend).run_task(task));
-        // - Seondly, we `try_join_all` over this yielding `Vec<TaskHandle>` (where `TaskHandle` is a future)
+        // - Seondly, we `try_join_all` over this yielding `Vec<TaskHandle>` (where `TaskHandle` is itself a future)
         let handles = future::try_join_all(iter).await?;
         trace!("recv task_handles");
         // - Lastly, we `try_join_all` over this again yielding `Vec<TaskOutput>`
