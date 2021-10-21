@@ -19,10 +19,10 @@ static_assertions::assert_impl_all!(Arc<SparkContext>: Send, Sync);
 
 impl SparkContext {
     pub fn new(config: SparkConfig) -> Arc<Self> {
-        let task_scheduler_backend: Box<dyn TaskSchedulerBackend> = match config.master_url {
+        let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match config.master_url {
             MasterUrl::Local { num_threads } =>
-                Box::new(LocalTaskSchedulerBackend::new(num_threads)),
-            MasterUrl::Distributed { url } => Box::new(DistributedTaskSchedulerBackend::new(url)),
+                Arc::new(LocalTaskSchedulerBackend::new(num_threads)),
+            MasterUrl::Distributed { url } => Arc::new(DistributedTaskSchedulerBackend::new(url)),
         };
 
         let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));
@@ -39,7 +39,7 @@ impl SparkContext {
         let task_scheduler = self.task_scheduler();
         let dag_scheduler =
             self.dag_scheduler_cell.get_or_init(|| Arc::new(DagScheduler::new(task_scheduler)));
-        Arc::clone(&dag_scheduler)
+        Arc::clone(dag_scheduler)
     }
 
     pub fn task_scheduler(&self) -> Arc<TaskScheduler> {

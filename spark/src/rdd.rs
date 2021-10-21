@@ -46,7 +46,9 @@ impl Eq for RddRef {
 
 impl PartialEq for RddRef {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        let lhs = &*self as *const _ as *const ();
+        let rhs = &*other as *const _ as *const ();
+        lhs == rhs
     }
 }
 

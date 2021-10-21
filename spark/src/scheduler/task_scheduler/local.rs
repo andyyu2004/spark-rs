@@ -1,3 +1,5 @@
+use std::sync::Once;
+
 use super::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
@@ -14,7 +16,8 @@ impl LocalTaskSchedulerBackend {
 
 #[async_trait]
 impl TaskSchedulerBackend for LocalTaskSchedulerBackend {
-    async fn run_task(&self, task: Task) -> SparkResult<TaskHandle> {
+    #[instrument(skip(self, task))]
+    async fn run_task(self: Arc<Self>, task: Task) -> SparkResult<TaskHandle> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.pool.spawn(move || {
             let output = task.into_box().exec();

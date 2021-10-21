@@ -88,8 +88,8 @@ impl DagScheduler {
         U: Datum,
     {
         let job_id = self.next_job_id();
-        let join_handle =
-            JobContext::new(self, SerdeArc::clone(&rdd), mapper).run_job(rdd, partitions, job_id);
+        let jcx = JobContext::new(self, SerdeArc::clone(&rdd), mapper);
+        let join_handle = jcx.run_job(rdd, partitions, job_id);
         JobHandle::new(job_id, join_handle)
     }
 
@@ -156,7 +156,7 @@ impl DagScheduler {
     fn alloc_stage(&self, mk_stage: impl FnOnce(StageId) -> Stage) -> StageId {
         let stage_id = self.next_stage_id();
         trace!(next_stage_id = ?stage_id);
-        assert!(self.stages.insert(stage_id, mk_stage(stage_id).into()).is_none());
+        assert!(self.stages.insert(stage_id, mk_stage(stage_id)).is_none());
         stage_id
     }
 

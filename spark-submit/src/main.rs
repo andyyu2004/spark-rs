@@ -31,8 +31,8 @@ async fn main() {
             Box::new(LocalExecutorBackend::new(num_threads)),
     };
 
-    let executor = Executor::new(backend, tokio::io::stdout());
-    if let Err(err) = executor.execute(tokio::io::stdin()).await {
+    let executor = Executor::new(backend);
+    if let Err(err) = executor.execute(tokio::io::stdin(), tokio::io::stdout()).await {
         todo!("handle error `{}`", err)
     }
 }

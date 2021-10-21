@@ -82,10 +82,10 @@ where
         let stage_id = self.create_result_stage(rdd.into_inner().as_untyped(), partitions, job_id);
         self.create_active_job(job_id, stage_id);
         let outputs = self.submit_stage(stage_id).await?;
-        let downcasted = outputs.into_iter().map(|output| {
+        let downcasted = outputs.into_iter().map(|(task_id, data)| {
             // TODO error handling
-            let output = output.unwrap();
-            *output.into_box().downcast::<U>().expect("expected output element to be of type `U`")
+            let data = data.unwrap();
+            *data.into_box().downcast::<U>().expect("expected output element to be of type `U`")
         });
         Ok(downcasted.collect())
     }
@@ -119,7 +119,12 @@ where
             StageKind::Result { partitions: _ } =>
                 uncomputed_partitions.into_iter().map(move |partition| {
                     ResultTask::new(
-                        TaskMeta { stage_id, job_id, partition },
+                        TaskMeta {
+                            task_id: self.task_scheduler.next_task_id(),
+                            stage_id,
+                            job_id,
+                            partition,
+                        },
                         SerdeArc::from(Arc::clone(&self.final_rdd)),
                         Arc::clone(&self.mapper),
                     )

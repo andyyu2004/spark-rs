@@ -21,7 +21,7 @@ fn new_distributed() -> (SparkSession, Arc<SparkContext>) {
 }
 
 #[tokio::test]
-async fn it_works() -> SparkResult<()> {
+async fn it_works_local() -> SparkResult<()> {
     let (_spark, scx) = new_local();
     let rdd = scx.parallelize(&[1, 2, 3, 4]);
     assert_eq!(rdd.collect().await?, vec![1, 2, 3, 4]);

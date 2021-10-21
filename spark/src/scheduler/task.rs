@@ -7,10 +7,18 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 static_assertions::assert_impl_all!(Task: Serialize, Deserialize);
+static_assertions::assert_impl_all!(TaskOutput: Serialize, Deserialize);
+
+newtype_index!(TaskId);
 
 pub type Task = SerdeBox<dyn ErasedTask>;
 
-pub type TaskOutput = SparkResult<SerdeBox<dyn TaskOutputData>>;
+pub type TaskOutput = (TaskId, TaskResult<SerdeBox<dyn TaskOutputData>>);
+
+pub type TaskResult<T> = Result<T, TaskError>;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum TaskError {}
 
 pub trait TaskOutputData: Any + Debug + Send + DowncastSync + 'static {}
 
@@ -20,14 +28,16 @@ impl<T> TaskOutputData for T where T: Any + Debug + DowncastSync + Send + 'stati
 {
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct TaskMeta {
+    pub(super) task_id: TaskId,
     pub(super) stage_id: StageId,
     pub(super) partition: PartitionIdx,
     pub(super) job_id: JobId,
 }
 
-pub trait ErasedTask: Serialize + Deserialize + Send + Sync + 'static {
+pub trait ErasedTask: Debug + Serialize + Deserialize + Send + Sync + 'static {
+    fn id(&self) -> TaskId;
     fn exec(self: Box<Self>) -> TaskOutput;
 
     fn boxed(self) -> SerdeBox<Self>
@@ -47,6 +57,15 @@ pub struct ResultTask<T: 'static, U, F> {
     _u: PhantomData<U>,
 }
 
+impl<T, U, F> Debug for ResultTask<T, U, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResultTask")
+            .field("meta", &self.meta)
+            .field("rdd", &self.rdd)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<T, U, F> ResultTask<T, U, F>
 where
     T: CloneDatum,
@@ -64,11 +83,15 @@ where
     U: Datum,
     F: PartitionMapper<T, U>,
 {
+    fn id(&self) -> TaskId {
+        self.meta.task_id
+    }
+
     fn exec(self: Box<Self>) -> TaskOutput {
         let cx = &mut TaskContext {};
         let iter = self.rdd.into_inner().compute(cx, self.meta.partition);
         let output = SerdeBox::new((self.mapper)(cx, iter));
-        Ok(output)
+        (self.meta.task_id, Ok(output))
     }
 }
 
@@ -79,11 +102,22 @@ pub struct TaskSet<I> {
     pub(super) tasks: I,
 }
 
+impl<I> Debug for TaskSet<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TaskSet")
+            .field("job_id", &self.job_id)
+            .field("stage_id", &self.stage_id)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<I> TaskSet<I>
 where
-    I: IntoIterator<Item = Task>,
+    I: ExactSizeIterator<Item = Task>,
 {
-    pub fn new(job_id: JobId, stage_id: StageId, tasks: I) -> Self {
+    pub fn new(job_id: JobId, stage_id: StageId, tasks: impl IntoIterator<IntoIter = I>) -> Self {
+        let tasks = tasks.into_iter();
+        assert!(!tasks.is_empty());
         Self { job_id, stage_id, tasks }
     }
 }
