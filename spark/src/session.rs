@@ -11,7 +11,7 @@ impl SparkSession {
         SparkSessionBuilder::default()
     }
 
-    pub fn spark_context(&self) -> Arc<SparkContext> {
+    pub fn scx(&self) -> Arc<SparkContext> {
         Arc::clone(&self.scx)
     }
 }

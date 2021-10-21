@@ -6,10 +6,23 @@ use spark::{SparkContext, SparkResult, SparkSession};
 use std::lazy::SyncLazy;
 use std::sync::Arc;
 
+static DATA: SyncLazy<Vec<u32>> = SyncLazy::new(|| (0..1024000).collect());
+
+use tracing_flame::FlameLayer;
+use tracing_subscriber::{fmt, prelude::*};
+
+#[allow(unused)]
+fn setup_global_subscriber() {
+    let fmt_layer = fmt::Layer::default();
+    let (flame_layer, _guard) = FlameLayer::with_file("./tracing.folded").unwrap();
+    let _ = tracing_subscriber::registry().with(fmt_layer).with(flame_layer).try_init();
+}
+
 fn new(master_url: MasterUrl) -> (SparkSession, Arc<SparkContext>) {
     let _ = tracing_subscriber::fmt::try_init();
+    // setup_global_subscriber();
     let session = SparkSession::builder().master_url(master_url).create();
-    let scx = session.spark_context();
+    let scx = session.scx();
     (session, scx)
 }
 
@@ -22,8 +35,6 @@ fn new_distributed() -> (SparkSession, Arc<SparkContext>) {
         url: spark::config::DistributedUrl::Local { num_threads: num_cpus::get() },
     })
 }
-
-static DATA: SyncLazy<Vec<u32>> = SyncLazy::new(|| (0..1024000).collect());
 
 #[tokio::test]
 async fn it_works_local() -> SparkResult<()> {

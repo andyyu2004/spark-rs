@@ -4,13 +4,13 @@ mod stage;
 mod task;
 mod task_scheduler;
 
-pub use self::job::JobOutput;
+pub use self::job::{JobId, JobOutput};
+pub use self::stage::*;
 pub use self::task::*;
 pub use self::task_scheduler::*;
 
 use self::event::*;
 use self::job::*;
-use self::stage::*;
 use crate::data::Datum;
 use crate::rdd::{RddRef, TypedRddRef};
 use crate::serialize::{SerdeArc, SerdeFn};

@@ -15,5 +15,5 @@ fn test_concurrent_vec_hash() {
     newtype_index!(SomeIdx);
     let vec = ConcurrentIndexVec::default();
     vec.insert(SomeIdx::new(5), 5);
-    // assert_eq!(*vec.get(SomeIdx::new(5)), 5);
+    assert_eq!(*vec.get(SomeIdx::new(5)), 5);
 }

@@ -27,7 +27,9 @@ impl DistributedTaskSchedulerBackend {
         Self { executor, writer: Default::default(), txs: Default::default() }
     }
 
+    #[instrument(skip(self))]
     async fn start(self: Arc<Self>) -> SparkResult<()> {
+        trace!("start distributed task_scheduler backend");
         let (stream, executor_stream) = tokio::io::duplex(8192);
         let (reader, writer) = tokio::io::split(stream);
         let writer = AsyncBincodeWriter::from(writer).for_async();
@@ -39,6 +41,7 @@ impl DistributedTaskSchedulerBackend {
         let stream = AsyncBincodeReader::<_, TaskOutput>::from(reader);
         stream
             .try_for_each(|output @ (task_id, _)| {
+                trace!("recv completed task `{:?}`", task_id);
                 let this = Arc::clone(&self);
                 async move {
                     let (_, tx) = this.txs.remove(&task_id).unwrap();
@@ -53,6 +56,7 @@ impl DistributedTaskSchedulerBackend {
 
 #[async_trait]
 impl TaskSchedulerBackend for DistributedTaskSchedulerBackend {
+    #[instrument(skip(self))]
     async fn run_task(self: Arc<Self>, task: Task) -> SparkResult<TaskHandle> {
         static INIT: Once = Once::new();
         INIT.call_once(|| {
@@ -64,15 +68,16 @@ impl TaskSchedulerBackend for DistributedTaskSchedulerBackend {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.txs.insert(task.id(), tx);
 
-        // HACK: This yield_now is meant to give the task running `start` a chance to set the writer before we try to access it
-        tokio::task::yield_now().await;
-        self.writer
-            .get()
-            .expect("guess the hack above didn't work :/")
-            .lock()
-            .await
-            .send(task)
-            .await?;
+        loop {
+            // Loop until the task spawned above has had a chance to run the initialization
+            match self.writer.get() {
+                Some(writer) => {
+                    let mut writer = writer.lock().await;
+                    break writer.send(task).await?;
+                }
+                None => tokio::task::yield_now().await,
+            }
+        }
 
         Ok(rx)
     }

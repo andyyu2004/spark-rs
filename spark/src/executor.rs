@@ -6,7 +6,7 @@ use async_bincode::{AsyncBincodeReader, AsyncBincodeWriter};
 use async_trait::async_trait;
 use futures::{SinkExt, TryStreamExt};
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 
 pub use backend::*;
@@ -48,8 +48,9 @@ impl Executor {
     ) -> ExecutorResult<()> {
         let mut writer = AsyncBincodeWriter::from(writer).for_async();
         while let Some(output) = self.backend.task_output().await {
-            trace!(task_output = ?output);
+            trace!("recv task output from executor backend");
             writer.send(output).await?;
+            trace!("task output sent");
         }
         Ok(())
     }

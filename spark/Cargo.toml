@@ -22,11 +22,20 @@ serde_derive = "1"
 static_assertions = "1"
 typetag = "0.1"
 tracing = "0.1"
+tracing-flame = "0.1"
 tracing-subscriber = "0.2"
 spark-ds = { path = "../spark-ds" }
 serde = { version = "1", features = ["derive", "rc"] }
-tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "sync", "test-util", "process"] }
+tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "sync", "test-util", "process", "io-util"] }
 serde_traitobject = { git = "ssh://git@github.com/andyyu2004/serde_traitobject"}
+
+[dev-dependencies]
+criterion = { version = "0.3.5", features = ["async", "async_tokio"] }
+
+[[bench]]
+name = "bench"
+harness = false
 
 [lib]
 doctest = false
+

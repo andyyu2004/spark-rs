@@ -36,6 +36,12 @@ pub struct TaskMeta {
     pub(super) job_id: JobId,
 }
 
+impl TaskMeta {
+    pub fn new(task_id: TaskId, stage_id: StageId, partition: PartitionIdx, job_id: JobId) -> Self {
+        Self { task_id, stage_id, partition, job_id }
+    }
+}
+
 pub trait ErasedTask: Debug + Serialize + Deserialize + Send + Sync + 'static {
     fn id(&self) -> TaskId;
     fn exec(self: Box<Self>) -> TaskOutput;

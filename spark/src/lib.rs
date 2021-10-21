@@ -14,13 +14,13 @@ mod dependency;
 mod error;
 mod iter;
 mod partition;
-mod serialize;
 mod session;
 
 pub mod config;
 pub mod executor;
 pub mod rdd;
 pub mod scheduler;
+pub mod serialize;
 
 pub use context::*;
 pub use data::*;

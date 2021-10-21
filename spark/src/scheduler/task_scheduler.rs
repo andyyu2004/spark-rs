@@ -31,6 +31,7 @@ impl TaskScheduler {
         // - Firstly, we iterate over each task in the task_set
         //   yielding an iterator over futures that each yield a `SparkResult<TaskHandle>`
         let iter = task_set.tasks.into_iter().map(|task| Arc::clone(&self.backend).run_task(task));
+        trace!("recv unawaited task_handles");
         // - Seondly, we `try_join_all` over this yielding `Vec<TaskHandle>` (where `TaskHandle` is itself a future)
         let handles = future::try_join_all(iter).await?;
         trace!("recv task_handles");
