@@ -1,4 +1,5 @@
 use super::*;
+use crate::broadcast::Broadcast;
 use crate::data::CloneDatum;
 use indexed_vec::Idx;
 use serde_derive::{Deserialize, Serialize};
@@ -9,11 +10,11 @@ pub struct ParallelCollection<T> {
     #[serde(skip_serializing, skip_deserializing)]
     scx: Weak<SparkContext>,
     rdd_id: RddId,
-    partitions: Vec<ParallelCollectionPartition<T>>,
+    partitions: Broadcast<Vec<ParallelCollectionPartition<T>>>,
     partition_indices: Vec<PartitionIdx>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ParallelCollectionPartition<T> {
     data: Arc<Vec<T>>,
 }
@@ -26,8 +27,13 @@ impl<T: CloneDatum> ParallelCollection<T> {
             .map(|chunk| ParallelCollectionPartition { data: Arc::new(chunk.to_vec()) })
             .collect::<Vec<_>>();
         let partition_indices = (0..partitions.len()).map(PartitionIdx::new).collect();
+        let partitions = scx.broadcast(partitions);
         let rdd_id = scx.next_rdd_id();
         Self { rdd_id, scx: Arc::downgrade(&scx), partitions, partition_indices }
+    }
+
+    fn partitions_blocking(&self) -> SparkResult<&[ParallelCollectionPartition<T>]> {
+        futures::executor::block_on(async { Ok(&self.partitions.get().await?[..]) })
     }
 }
 
@@ -37,6 +43,7 @@ impl<T> std::fmt::Debug for ParallelCollection<T> {
     }
 }
 
+#[async_trait]
 impl<T: CloneDatum> Rdd for ParallelCollection<T> {
     fn id(&self) -> RddId {
         self.rdd_id
@@ -50,8 +57,8 @@ impl<T: CloneDatum> Rdd for ParallelCollection<T> {
         Default::default()
     }
 
-    fn partitions(&self) -> Partitions {
-        (0..self.partitions.len()).map(PartitionIdx::new).collect()
+    async fn partitions(&self) -> SparkResult<Partitions> {
+        Ok((0..self.partitions.get().await?.len()).map(PartitionIdx::new).collect())
     }
 }
 
@@ -66,9 +73,9 @@ impl<T: CloneDatum> TypedRdd for ParallelCollection<T> {
         self: Arc<Self>,
         _cx: &mut TaskContext,
         idx: PartitionIdx,
-    ) -> SparkIteratorRef<Self::Element> {
-        let partition = &self.partitions[idx.index()];
+    ) -> SparkResult<SparkIteratorRef<Self::Element>> {
+        let partition = &self.partitions_blocking()?[idx.index()];
         let data = Arc::clone(&partition.data);
-        Box::new((0..data.len()).map(move |i| data[i].clone()))
+        Ok(Box::new((0..data.len()).map(move |i| data[i].clone())))
     }
 }

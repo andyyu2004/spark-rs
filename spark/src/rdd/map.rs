@@ -24,6 +24,7 @@ impl<R: Rdd, F> std::fmt::Debug for Map<R, F> {
     }
 }
 
+#[async_trait]
 impl<R: Rdd + Serialize + DeserializeOwned, F: Datum> Rdd for Map<R, F> {
     fn id(&self) -> RddId {
         self.id
@@ -37,7 +38,7 @@ impl<R: Rdd + Serialize + DeserializeOwned, F: Datum> Rdd for Map<R, F> {
         todo!()
     }
 
-    fn partitions(&self) -> Partitions {
+    async fn partitions(&self) -> SparkResult<Partitions> {
         todo!()
     }
 }
@@ -58,7 +59,7 @@ where
         self: Arc<Self>,
         cx: &mut TaskContext,
         split: PartitionIdx,
-    ) -> SparkIteratorRef<Self::Element> {
-        Box::new(Arc::clone(&self.rdd).compute(cx, split).map(self.f.clone()))
+    ) -> SparkResult<SparkIteratorRef<Self::Element>> {
+        Ok(Box::new(Arc::clone(&self.rdd).compute(cx, split)?.map(self.f.clone())))
     }
 }

@@ -1,12 +1,14 @@
 use super::*;
 use crate::config::DistributedUrl;
 use crate::executor::{Executor, LocalExecutorBackend};
+use crate::rpc;
 use async_bincode::AsyncBincodeReader;
 use bincode::Options;
 use dashmap::DashMap;
 use futures::TryStreamExt;
 use rayon::ThreadPoolBuilder;
 use std::lazy::SyncOnceCell;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Once;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -19,13 +21,16 @@ pub struct DistributedTaskSchedulerBackend {
 }
 
 impl DistributedTaskSchedulerBackend {
-    pub fn new(url: DistributedUrl) -> Self {
+    pub async fn new(url: DistributedUrl) -> SparkResult<Self> {
         let backend = match url {
             DistributedUrl::Local { num_threads } =>
                 Arc::new(LocalExecutorBackend::new(num_threads)),
         };
-        let executor = Executor::new(backend);
-        Self { executor, task_dispatcher: Default::default(), txs: Default::default() }
+
+        let server_addr = SocketAddrV4::new(Ipv4Addr::new(1, 2, 3, 4), 23423);
+        let rpc_client = rpc::create_client(server_addr).await?;
+        let executor = Executor::new(backend, rpc_client);
+        Ok(Self { executor, task_dispatcher: Default::default(), txs: Default::default() })
     }
 
     async fn dispatch_tasks(

@@ -1,6 +1,8 @@
 use crate::config::{MasterUrl, SparkConfig};
-use crate::SparkContext;
+use crate::{SparkContext, SparkResult};
 use std::sync::Arc;
+
+const DEFAULT_PORT: u16 = 8077;
 
 pub struct SparkSession {
     scx: Arc<SparkContext>,
@@ -22,8 +24,8 @@ pub struct SparkSessionBuilder {
 }
 
 impl SparkSessionBuilder {
-    pub fn create(self) -> SparkSession {
-        SparkSession { scx: SparkContext::new(self.config) }
+    pub async fn create(self) -> SparkResult<SparkSession> {
+        Ok(SparkSession { scx: SparkContext::new(self.config).await? })
     }
 
     pub fn master_url(mut self, master_url: MasterUrl) -> Self {

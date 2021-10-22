@@ -3,6 +3,7 @@ use crate::serialize::SerdeArc;
 use super::*;
 use async_recursion::async_recursion;
 use fixedbitset::FixedBitSet;
+use futures::executor::block_on;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -21,7 +22,10 @@ impl ActiveJob {
     pub fn new(scheduler: Arc<DagScheduler>, job_id: JobId, final_stage_id: StageId) -> Self {
         let stage = scheduler.stages.get(final_stage_id);
         let partition_count = match &stage.kind {
-            StageKind::ShuffleMap => stage.rdd.partitions().len(),
+            StageKind::ShuffleMap =>
+            // Should be fine to force run this as we are currently on the master node and so `partitions` should have a fast
+            // and infallible implementation
+                block_on(async { stage.rdd.partitions().await.unwrap().len() }),
             StageKind::Result { partitions } => partitions.len(),
         };
 
@@ -82,7 +86,7 @@ where
         let stage_id = self.create_result_stage(rdd.into_inner().as_untyped(), partitions, job_id);
         self.create_active_job(job_id, stage_id);
         let outputs = self.submit_stage(stage_id).await?;
-        let downcasted = outputs.into_iter().map(|(task_id, data)| {
+        let downcasted = outputs.into_iter().map(|(_task_id, data)| {
             // TODO error handling
             let data = data.unwrap();
             *data.into_box().downcast::<U>().expect("expected output element to be of type `U`")

@@ -68,6 +68,7 @@ impl Hash for dyn Rdd {
     }
 }
 
+#[async_trait]
 pub trait Rdd:
     Send
     + Sync
@@ -82,7 +83,7 @@ pub trait Rdd:
 
     fn dependencies(&self) -> Dependencies;
 
-    fn partitions(&self) -> Partitions;
+    async fn partitions(&self) -> SparkResult<Partitions>;
 
     fn immediate_shuffle_dependencies(&self) -> HashSet<ShuffleDependency> {
         let deps = self.dependencies();
@@ -117,7 +118,7 @@ pub trait TypedRdd: Rdd {
         self: Arc<Self>,
         cx: &mut TaskContext,
         split: PartitionIdx,
-    ) -> SparkIteratorRef<Self::Element>;
+    ) -> SparkResult<SparkIteratorRef<Self::Element>>;
 
     fn map<F>(self: Arc<Self>, f: F) -> Map<Self, F>
     where

@@ -18,7 +18,9 @@ pub type TaskOutput = (TaskId, TaskResult<SerdeBox<dyn TaskOutputData>>);
 pub type TaskResult<T> = Result<T, TaskError>;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum TaskError {}
+pub enum TaskError {
+    Todo,
+}
 
 pub trait TaskOutputData: Any + Debug + Send + DowncastSync + 'static {}
 
@@ -95,9 +97,15 @@ where
 
     fn exec(self: Box<Self>) -> TaskOutput {
         let cx = &mut TaskContext {};
-        let iter = self.rdd.into_inner().compute(cx, self.meta.partition);
-        let output = SerdeBox::new((self.mapper)(cx, iter));
-        (self.meta.task_id, Ok(output))
+        let output = try {
+            let iter = self
+                .rdd
+                .into_inner()
+                .compute(cx, self.meta.partition)
+                .map_err(|_| TaskError::Todo)?;
+            SerdeBox::new((self.mapper)(cx, iter)) as SerdeBox<dyn TaskOutputData>
+        };
+        (self.meta.task_id, output)
     }
 }
 

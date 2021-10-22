@@ -1,6 +1,8 @@
 mod backend;
 mod local;
 
+use crate::broadcast::BroadcastContext;
+use crate::rpc::SparkRpcClient;
 use crate::scheduler::{Task, TaskOutput};
 use async_bincode::AsyncBincodeWriter;
 use async_trait::async_trait;
@@ -18,12 +20,14 @@ pub type ExecutorResult<T> = anyhow::Result<T>;
 pub type ExecutorError = anyhow::Error;
 
 pub struct Executor {
+    rpc_client: SparkRpcClient,
+    broadcaster: BroadcastContext,
     backend: Arc<dyn ExecutorBackend>,
 }
 
 impl Executor {
-    pub fn new(backend: Arc<dyn ExecutorBackend>) -> Arc<Self> {
-        Arc::new(Self { backend })
+    pub fn new(backend: Arc<dyn ExecutorBackend>, rpc_client: SparkRpcClient) -> Arc<Self> {
+        Arc::new(Self { backend, rpc_client, broadcaster: BroadcastContext::new() })
     }
 
     #[instrument(skip(self, reader, writer))]

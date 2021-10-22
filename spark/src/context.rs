@@ -1,15 +1,19 @@
+use crate::broadcast::{Broadcast, BroadcastContext};
 use crate::config::{MasterUrl, SparkConfig};
 use crate::data::{CloneDatum, Datum};
+use crate::env::SparkEnv;
 use crate::rdd::*;
 use crate::scheduler::*;
 use crate::*;
 use indexed_vec::Idx;
 use serde::{Deserialize, Serialize};
 use std::lazy::SyncOnceCell;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub struct SparkContext {
+    env: Arc<SparkEnv>,
     dag_scheduler_cell: SyncOnceCell<Arc<DagScheduler>>,
     task_scheduler: Arc<TaskScheduler>,
     rdd_idx: AtomicUsize,
@@ -18,21 +22,25 @@ pub struct SparkContext {
 static_assertions::assert_impl_all!(Arc<SparkContext>: Send, Sync);
 
 impl SparkContext {
-    pub fn new(config: SparkConfig) -> Arc<Self> {
+    pub async fn new(config: SparkConfig) -> SparkResult<Arc<Self>> {
         let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match config.master_url {
             MasterUrl::Local { num_threads } =>
                 Arc::new(LocalTaskSchedulerBackend::new(num_threads)),
-            MasterUrl::Distributed { url } => Arc::new(DistributedTaskSchedulerBackend::new(url)),
+            MasterUrl::Distributed { url } =>
+                Arc::new(DistributedTaskSchedulerBackend::new(url).await?),
         };
 
+        let broadcaster = BroadcastContext::new();
+        let env = SparkEnv::init(broadcaster);
         let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));
         let scx = Self {
+            env,
             task_scheduler,
             dag_scheduler_cell: Default::default(),
             rdd_idx: Default::default(),
         };
 
-        Arc::new(scx)
+        Ok(Arc::new(scx))
     }
 
     pub fn dag_scheduler(&self) -> Arc<DagScheduler> {
@@ -93,8 +101,12 @@ impl SparkContext {
         T: CloneDatum,
         U: Datum,
     {
-        let n = rdd.partitions().len();
+        let n = rdd.partitions().await?.len();
         self.run_rdd(rdd, (0..n).map(PartitionIdx::new).collect(), f).await
+    }
+
+    pub fn broadcast<T: Datum>(self: &Arc<Self>, datum: T) -> Broadcast<T> {
+        Broadcast::new(self, datum)
     }
 
     pub fn interruptible_iterator<T: CloneDatum>(
@@ -113,6 +125,14 @@ impl SparkContext {
             }
         }
         Box::new(InterruptibleIterator { iter })
+    }
+}
+
+impl Deref for SparkContext {
+    type Target = Arc<SparkEnv>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.env
     }
 }
 
