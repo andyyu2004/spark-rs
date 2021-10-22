@@ -23,27 +23,28 @@ fn setup_global_subscriber() {
     let _ = tracing_subscriber::registry().with(fmt_layer).with(flame_layer).try_init();
 }
 
-fn new(master_url: MasterUrl) -> (SparkSession, Arc<SparkContext>) {
+async fn new(master_url: MasterUrl) -> SparkResult<(SparkSession, Arc<SparkContext>)> {
     let _ = tracing_subscriber::fmt::try_init();
     // setup_global_subscriber();
-    let session = SparkSession::builder().master_url(master_url).create();
+    let session = SparkSession::builder().master_url(master_url).create().await?;
     let scx = session.scx();
-    (session, scx)
+    Ok((session, scx))
 }
 
-fn new_local() -> (SparkSession, Arc<SparkContext>) {
-    new(MasterUrl::default())
+async fn new_local() -> SparkResult<(SparkSession, Arc<SparkContext>)> {
+    new(MasterUrl::default()).await
 }
 
-fn new_distributed() -> (SparkSession, Arc<SparkContext>) {
+async fn new_distributed() -> SparkResult<(SparkSession, Arc<SparkContext>)> {
     new(MasterUrl::Distributed {
         url: spark::config::DistributedUrl::Local { num_threads: num_cpus::get() },
     })
+    .await
 }
 
 #[tokio::test]
 async fn it_works_local() -> SparkResult<()> {
-    let (_spark, scx) = new_local();
+    let (_spark, scx) = new_local().await?;
     let rdd = scx.parallelize(&DATA);
     assert_eq!(rdd.collect().await?, *DATA);
     Ok(())
@@ -51,7 +52,7 @@ async fn it_works_local() -> SparkResult<()> {
 
 #[tokio::test]
 async fn distributed_it_works() -> SparkResult<()> {
-    let (_spark, scx) = new_distributed();
+    let (_spark, scx) = new_distributed().await?;
     let rdd = scx.parallelize(&DATA);
     assert_eq!(rdd.collect().await?, *DATA);
     Ok(())

@@ -19,7 +19,7 @@ use super::*;
 
 #[tokio::test]
 async fn serialize_task() -> SparkResult<()> {
-    let (_spark, scx) = new_local();
+    let (_spark, scx) = new_local().await?;
     let rdd = TypedRddRef::from_inner(scx.parallelize(&DATA));
     let meta = TaskMeta::new(TaskId::new(0), StageId::new(0), PartitionIdx::new(0), JobId::new(0));
     let mapper = Arc::new(Fn!(

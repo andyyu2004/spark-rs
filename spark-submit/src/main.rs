@@ -1,13 +1,10 @@
 use anyhow::{Error, Result};
+use clap::Parser;
 use spark::executor::{Executor, LocalExecutorBackend};
-use spark::rpc::SparkRpcClient;
 use spark::SparkResult;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio_serde::formats::Bincode;
-
-use clap::Parser;
 
 #[derive(Parser)]
 struct Opts {
