@@ -46,6 +46,7 @@ impl Executor {
 
             let backend = Arc::clone(&self.backend);
             let (tx, rx) = tokio::sync::oneshot::channel();
+
             tokio::spawn(async move {
                 let task = rx.await?;
                 backend.execute_task(task).await?;
@@ -53,12 +54,16 @@ impl Executor {
             });
 
             pool.spawn(move || {
+                trace!("start deserializing task");
                 let task = bincode::options()
                     .with_limit(u32::max_value() as u64)
                     .allow_trailing_bytes()
                     .deserialize::<Task>(&buf[..])
                     .unwrap();
+                trace!("finished deserializing task `{:?}`", task.id());
+                trace!("start sending task to executor_backend");
                 tx.send(task).unwrap();
+                trace!("finish sending task to executor_backend");
             });
         }
 

@@ -45,6 +45,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-pipe"
+version = "0.1.3"
+source = "git+ssh://git@github.com/andyyu2004/async-pipe-rs#feeb77e83142a9ff837d0767652ae41bfc5d8e47"
+dependencies = [
+ "futures",
+ "log",
+ "tokio",
+]
+
+[[package]]
 name = "async-recursion"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1193,6 +1203,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-bincode",
+ "async-pipe",
  "async-recursion",
  "async-trait",
  "bincode",

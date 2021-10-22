@@ -1,14 +1,14 @@
 use super::*;
 use crate::config::DistributedUrl;
 use crate::executor::{Executor, LocalExecutorBackend};
-use async_bincode::{AsyncBincodeReader, AsyncBincodeWriter, AsyncDestination};
+use async_bincode::AsyncBincodeReader;
 use bincode::Options;
 use dashmap::DashMap;
 use futures::TryStreamExt;
 use rayon::ThreadPoolBuilder;
 use std::lazy::SyncOnceCell;
 use std::sync::Once;
-use tokio::io::{AsyncWrite, AsyncWriteExt, DuplexStream, WriteHalf};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 pub const TASK_LIMIT: usize = 100;
 
@@ -37,9 +37,9 @@ impl DistributedTaskSchedulerBackend {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
         tokio::spawn(async move {
             while let Some(serialized_task) = rx.recv().await {
-                trace!("begin writing serialized task to executor");
+                trace!("start writing serialized task to executor");
                 writer.write_all(&serialized_task).await?;
-                trace!("done writing serialized task");
+                trace!("finish writing serialized task");
             }
             Ok::<_, SparkError>(())
         });
@@ -65,10 +65,8 @@ impl DistributedTaskSchedulerBackend {
     #[instrument(skip(self))]
     async fn start(self: Arc<Self>) -> SparkResult<()> {
         trace!("start distributed task_scheduler backend");
-        let (stream, executor_stream) = tokio::io::duplex(1_024_000_000);
-        let (reader, writer) = tokio::io::split(stream);
-
         let (task_dispatcher, task_receiver) = tokio::sync::mpsc::channel(TASK_LIMIT);
+        let (writer, executor_reader) = async_pipe::pipe();
 
         // The reason for handling the sending of the writer over a separate task is because
         // `send` on a channel sender only requires `&self` while `send` on the `Sink` requires `&mut self`,
@@ -76,9 +74,8 @@ impl DistributedTaskSchedulerBackend {
         let dispatcher_handle = tokio::spawn(Self::dispatch_tasks(task_receiver, writer));
         self.task_dispatcher.set(task_dispatcher).unwrap();
 
-        let (executor_reader, executor_writer) = tokio::io::split(executor_stream);
-
         let executor = Arc::clone(&self.executor);
+        let (executor_writer, reader) = async_pipe::pipe();
         let executor_handle = tokio::spawn(executor.execute(executor_reader, executor_writer));
 
         let stream = AsyncBincodeReader::<_, TaskOutput>::from(reader);

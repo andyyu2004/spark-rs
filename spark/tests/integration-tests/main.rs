@@ -1,12 +1,17 @@
 #![feature(once_cell)]
 
+mod random;
+
+use indexed_vec::Idx;
+use serde_closure::Fn;
 use spark::config::MasterUrl;
-use spark::rdd::TypedRddExt;
-use spark::{SparkContext, SparkResult, SparkSession};
+use spark::rdd::{TypedRddExt, TypedRddRef};
+use spark::scheduler::{JobId, ResultTask, StageId, TaskId, TaskMeta};
+use spark::{PartitionIdx, SparkContext, SparkIteratorRef, SparkResult, SparkSession, TaskContext};
 use std::lazy::SyncLazy;
 use std::sync::Arc;
 
-static DATA: SyncLazy<Vec<u32>> = SyncLazy::new(|| (0..2024000).collect());
+static DATA: SyncLazy<Vec<u32>> = SyncLazy::new(|| (0..30240000).collect());
 
 use tracing_flame::FlameLayer;
 use tracing_subscriber::{fmt, prelude::*};

@@ -52,6 +52,8 @@ impl PartialEq for RddRef {
     }
 }
 
+static_assertions::assert_impl_all!(TypedRddRef<i32>: serde_traitobject::Serialize, serde_traitobject::Deserialize);
+
 pub type TypedRddRef<T> = SerdeArc<dyn TypedRdd<Element = T>>;
 
 impl PartialEq for dyn Rdd {

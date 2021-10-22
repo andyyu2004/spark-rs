@@ -26,7 +26,7 @@ impl LocalExecutorBackend {
 impl ExecutorBackend for LocalExecutorBackend {
     #[instrument(skip(self))]
     async fn execute_task(&self, task: Task) -> ExecutorResult<()> {
-        trace!("begin execute_task");
+        trace!("start execute_task");
         let tx = self.tx.clone();
         self.pool.spawn(move || {
             let output = task.into_box().exec();
