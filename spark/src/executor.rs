@@ -2,8 +2,9 @@ mod backend;
 mod local;
 
 use crate::broadcast::BroadcastContext;
-use crate::rpc::SparkRpcClient;
+use crate::config::SparkConfig;
 use crate::scheduler::{Task, TaskOutput};
+use crate::{newtype_index, SparkEnv, SparkResult};
 use async_bincode::AsyncBincodeWriter;
 use async_trait::async_trait;
 use bincode::Options;
@@ -19,15 +20,24 @@ pub use local::LocalExecutorBackend;
 pub type ExecutorResult<T> = anyhow::Result<T>;
 pub type ExecutorError = anyhow::Error;
 
+newtype_index!(ExecutorId);
+
+impl ExecutorId {
+    pub const DRIVER: Self = Self(0);
+}
+
 pub struct Executor {
-    rpc_client: SparkRpcClient,
-    broadcaster: BroadcastContext,
+    env: Arc<SparkEnv>,
     backend: Arc<dyn ExecutorBackend>,
 }
 
 impl Executor {
-    pub fn new(backend: Arc<dyn ExecutorBackend>, rpc_client: SparkRpcClient) -> Arc<Self> {
-        Arc::new(Self { backend, rpc_client, broadcaster: BroadcastContext::new() })
+    pub async fn new(
+        config: Arc<SparkConfig>,
+        backend: Arc<dyn ExecutorBackend>,
+    ) -> SparkResult<Arc<Self>> {
+        let env = SparkEnv::init_for_executor(config, BroadcastContext::new).await?;
+        Ok(Arc::new(Self { backend, env }))
     }
 
     #[instrument(skip(self, reader, writer))]

@@ -1,5 +1,6 @@
 #![feature(
     arbitrary_self_types,
+    async_closure,
     exact_size_is_empty,
     new_uninit,
     once_cell,
@@ -37,6 +38,9 @@ pub use session::*;
 
 #[macro_use]
 extern crate async_trait;
+
+#[macro_use]
+extern crate anyhow;
 
 #[macro_use]
 extern crate serde_closure;

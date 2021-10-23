@@ -1,8 +1,10 @@
 use crate::broadcast::{Broadcast, BroadcastContext};
-use crate::config::{MasterUrl, SparkConfig};
+use crate::config::{SparkConfig, TaskSchedulerConfig};
 use crate::data::{CloneDatum, Datum};
 use crate::env::SparkEnv;
+use crate::executor::ExecutorId;
 use crate::rdd::*;
+use crate::rpc::SparkRpcServer;
 use crate::scheduler::*;
 use crate::*;
 use indexed_vec::Idx;
@@ -15,32 +17,41 @@ use std::sync::Arc;
 pub struct SparkContext {
     env: Arc<SparkEnv>,
     dag_scheduler_cell: SyncOnceCell<Arc<DagScheduler>>,
-    task_scheduler: Arc<TaskScheduler>,
+    executor_idx: AtomicUsize,
     rdd_idx: AtomicUsize,
+    task_scheduler: Arc<TaskScheduler>,
 }
 
 static_assertions::assert_impl_all!(Arc<SparkContext>: Send, Sync);
 
 impl SparkContext {
-    pub async fn new(config: SparkConfig) -> SparkResult<Arc<Self>> {
-        let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match config.master_url {
-            MasterUrl::Local { num_threads } =>
-                Arc::new(LocalTaskSchedulerBackend::new(num_threads)),
-            MasterUrl::Distributed { url } =>
-                Arc::new(DistributedTaskSchedulerBackend::new(url).await?),
+    pub async fn new(config: Arc<SparkConfig>) -> SparkResult<Arc<Self>> {
+        let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match &config.task_scheduler {
+            TaskSchedulerConfig::Local { num_threads } =>
+                Arc::new(LocalTaskSchedulerBackend::new(*num_threads)),
+            TaskSchedulerConfig::Distributed { url } =>
+                Arc::new(DistributedTaskSchedulerBackend::new(Arc::clone(&config), url).await?),
         };
 
-        let broadcaster = BroadcastContext::new();
-        let env = SparkEnv::init(broadcaster);
+        let broadcaster = BroadcastContext::new;
+        let env = SparkEnv::init_for_driver(config, broadcaster).await?;
         let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));
-        let scx = Self {
+        let scx = Arc::new(Self {
             env,
             task_scheduler,
             dag_scheduler_cell: Default::default(),
+            /// Start from 1 as 0 is reserved for the driver node
+            executor_idx: AtomicUsize::new(1),
             rdd_idx: Default::default(),
-        };
+        });
 
-        Ok(Arc::new(scx))
+        // let _handle = SparkRpcServer::new(Arc::clone(&scx)).start().await;
+
+        Ok(scx)
+    }
+
+    pub fn env(&self) -> Arc<SparkEnv> {
+        Arc::clone(&self.env)
     }
 
     pub fn dag_scheduler(&self) -> Arc<DagScheduler> {
@@ -56,6 +67,10 @@ impl SparkContext {
 
     pub fn next_rdd_id(&self) -> RddId {
         RddId::new(self.rdd_idx.fetch_add(1, Ordering::SeqCst))
+    }
+
+    pub fn next_executor_id(&self) -> ExecutorId {
+        ExecutorId::new(self.executor_idx.fetch_add(1, Ordering::SeqCst))
     }
 
     #[inline(always)]

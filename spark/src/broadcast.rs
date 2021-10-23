@@ -1,4 +1,5 @@
 use crate::*;
+use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use indexed_vec::Idx;
@@ -36,10 +37,16 @@ impl BroadcastContext {
         &self,
         id: BroadcastId,
     ) -> SparkResult<Ref<'_, BroadcastId, Vec<u8>>> {
-        if let Some(value) = self.cached.get(&id) {
-            return Ok(value);
+        match self.cached.entry(id) {
+            Entry::Occupied(entry) => Ok(entry.into_ref().downgrade()),
+            Entry::Vacant(entry) => {
+                let env = SparkEnv::get();
+                assert!(!env.is_driver(), "driver should have all broadcasts in cache");
+                let client = SparkEnv::get_rpc_client().await?;
+                let item = client.get_broadcasted_item(tarpc::context::current(), id).await??;
+                Ok(entry.insert(item).downgrade())
+            }
         }
-        todo!()
     }
 
     fn next_broadcast_id(&self) -> BroadcastId {
