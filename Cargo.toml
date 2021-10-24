@@ -2,6 +2,7 @@
 members = [
     "spark",
     "spark-ds",
+    "spark-py",
     "spark-submit",
 ]
 

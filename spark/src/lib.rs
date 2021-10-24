@@ -40,7 +40,7 @@ pub use session::*;
 extern crate async_trait;
 
 #[macro_use]
-extern crate anyhow;
+extern crate eyre;
 
 #[macro_use]
 extern crate serde_closure;

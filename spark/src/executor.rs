@@ -17,8 +17,8 @@ use tokio::sync::Mutex;
 pub use backend::*;
 pub use local::LocalExecutorBackend;
 
-pub type ExecutorResult<T> = anyhow::Result<T>;
-pub type ExecutorError = anyhow::Error;
+pub type ExecutorResult<T> = eyre::Result<T>;
+pub type ExecutorError = eyre::Report;
 
 newtype_index!(ExecutorId);
 

@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
 async-bincode = "0.6.1"
 async-recursion = "0.3"
 async-trait = "0.1"
@@ -26,12 +25,12 @@ tracing = "0.1"
 tracing-flame = "0.1"
 tracing-subscriber = "0.2"
 typetag = "0.1"
+eyre = { version = "0.6.5" }
 spark-ds = { path = "../spark-ds" }
 serde = { version = "1", features = ["derive", "rc"] }
 tarpc = { version = "0.27", features = ["serde-transport", "tcp"] }
 tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "sync", "test-util", "process", "io-util", "parking_lot"] }
 tokio-serde = { version = "0.8", features = ["bincode"] }
-async-pipe = { git = "ssh://git@github.com/andyyu2004/async-pipe-rs", features = ["tokio"] }
 serde_traitobject = { git = "ssh://git@github.com/andyyu2004/serde_traitobject" }
 
 [dev-dependencies]

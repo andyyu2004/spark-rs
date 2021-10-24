@@ -26,7 +26,7 @@ pub async fn create_client(server_addr: impl ToSocketAddrs) -> SparkResult<Arc<S
     let connect = tarpc::serde_transport::tcp::connect(server_addr, mk_codec);
     let transport = tokio::time::timeout(Duration::from_secs(5), connect)
         .await
-        .map_err(|_| anyhow!("connection to master timed out"))??;
+        .map_err(|_| eyre!("connection to master timed out"))??;
     Ok(Arc::new(SparkRpcClient::new(tarpc::client::Config::default(), transport).spawn()))
 }
 

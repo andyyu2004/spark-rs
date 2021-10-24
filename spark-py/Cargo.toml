@@ -1,0 +1,20 @@
+[package]
+name = "spark-py"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eyre = { version = "0.6.5" }
+pyo3-asyncio = { version = "0.14", features = ["attributes", "tokio-runtime"] }
+pythonize = "0.14"
+
+[dependencies.spark]
+path = "../spark"
+
+[lib]
+name = "pyspark"
+crate-type = ["cdylib"]
+
+[dependencies.pyo3]
+version = "0.14.5"
+features = ["extension-module", "serde"]
