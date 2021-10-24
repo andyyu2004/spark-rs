@@ -28,15 +28,10 @@ pub struct SparkContext {
 static_assertions::assert_impl_all!(Arc<SparkContext>: Send, Sync);
 
 pub struct RpcContext {
-    env: Arc<SparkEnv>,
     executor_idx: AtomicUsize,
 }
 
 impl RpcContext {
-    pub fn env(&self) -> Arc<SparkEnv> {
-        Arc::clone(&self.env)
-    }
-
     pub fn next_executor_id(&self) -> ExecutorId {
         ExecutorId::new(self.executor_idx.fetch_add(1, Ordering::SeqCst))
     }
@@ -44,28 +39,27 @@ impl RpcContext {
 
 impl SparkContext {
     pub async fn new(config: Arc<SparkConfig>) -> SparkResult<Arc<Self>> {
-        let env = SparkEnv::init_for_driver(Arc::clone(&config), BroadcastContext::new).await;
-
         let rcx = Arc::new(RpcContext {
-            env: Arc::clone(&env),
             /// Start from 1 as 0 is reserved for the driver
             executor_idx: AtomicUsize::new(1),
         });
 
-        let (bind_addr, _) = SparkRpcServer::new(rcx).start().await?;
+        let (bind_addr, _) = SparkRpcServer::new(rcx).bind(&config.driver_addr).await?;
+
+        let env = SparkEnv::init_for_driver(bind_addr.clone(), BroadcastContext::new).await;
 
         let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match &config.task_scheduler {
             TaskSchedulerConfig::Local { num_threads } =>
                 Arc::new(LocalTaskSchedulerBackend::new(*num_threads)),
             TaskSchedulerConfig::Distributed { url } =>
-                Arc::new(DistributedTaskSchedulerBackend::new(Arc::clone(&config), url).await?),
+                Arc::new(DistributedTaskSchedulerBackend::new(bind_addr.clone(), url).await?),
         };
         let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));
 
         let scx = Arc::new(Self {
             env,
             task_scheduler,
-            bind_addr: bind_addr.into_inner(),
+            bind_addr,
             dag_scheduler_cell: Default::default(),
             rdd_idx: Default::default(),
         });

@@ -51,7 +51,6 @@ impl BroadcastContext {
                 assert!(!env.is_driver(), "driver should have all broadcasts in cache");
                 let client = SparkEnv::get_rpc_client().await?;
                 let item = client.get_broadcasted_item(tarpc::context::current(), id).await??;
-                panic!();
                 Ok(entry.insert(item).downgrade())
             }
         }
@@ -67,9 +66,12 @@ impl<T: Datum> Broadcast<T> {
         scx.broadcast_context().new_broadcast(scx, datum)
     }
 
+    #[instrument(skip(self))]
     pub async fn get(&self) -> SparkResult<&T> {
+        trace!("broadcast get");
         self.datum
             .get_or_try_init(|| async move {
+                trace!("broadcast data not present");
                 assert!(
                     self.scx.upgrade().is_none(),
                     "datum should not be None if we are still on the driver"

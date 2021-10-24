@@ -1,9 +1,9 @@
 use super::*;
 use crate::broadcast::BroadcastId;
-use crate::config::DriverUrl;
 use crate::executor::ExecutorId;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tarpc::context::Context;
@@ -46,21 +46,29 @@ impl SparkRpcServer {
         Self { rcx }
     }
 
-    pub async fn start(self) -> SparkResult<(DriverUrl, JoinHandle<()>)> {
-        let env = SparkEnv::get();
+    fn env(&self) -> Arc<SparkEnv> {
+        SparkEnv::get()
+    }
+
+    /// Starts the server attempting to bind to `config_addr`.
+    /// If it is taken it will try consecutive ports (until u16::MAX for now)
+    /// and returns the port that was bound.
+    pub async fn bind(self, config_addr: &SocketAddr) -> SparkResult<(SocketAddr, JoinHandle<()>)> {
         let mk_codec = tokio_serde::formats::Bincode::default;
-        let mut bind_addr = env.config().driver_url.clone();
+        let mut bind_addr = config_addr.clone();
         let mut listener = loop {
-            if let Ok(listener) = tarpc::serde_transport::tcp::listen(&*bind_addr, mk_codec).await {
+            if let Ok(listener) = tarpc::serde_transport::tcp::listen(&bind_addr, mk_codec).await {
                 break listener;
             }
 
-            if !bind_addr.next_port() {
-                bail!("failed to bind to any port from `{}` onwards", &*env.config().driver_url)
+            let port = bind_addr.port();
+            if port >= u16::MAX {
+                bail!("failed to bind to any port from `{}` onwards", config_addr);
             }
+            bind_addr.set_port(1 + port);
         };
 
-        info!("rpc server bound to `{}`", *bind_addr);
+        info!("rpc server bound to `{}`", bind_addr);
 
         let handle = tokio::spawn(async move {
             listener.config_mut().max_frame_length(usize::MAX);
@@ -91,7 +99,7 @@ impl SparkRpc for SparkRpcServer {
         _context: Context,
         id: BroadcastId,
     ) -> SparkRpcResult<Vec<u8>> {
-        let bcx = self.rcx.env().broadcast_context();
+        let bcx = self.env().broadcast_context();
         let bytes = bcx
             .get_broadcasted_bytes(id)
             .await

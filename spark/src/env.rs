@@ -1,8 +1,8 @@
 use crate::broadcast::BroadcastContext;
-use crate::config::SparkConfig;
 use crate::executor::ExecutorId;
 use crate::rpc::{self, SparkRpcClient};
 use crate::SparkResult;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
@@ -14,7 +14,7 @@ static SPARK_ENV: OnceCell<Arc<SparkEnv>> = OnceCell::const_new();
 /// which accesses the environment through a global variable instead.
 /// Prefer supplying a reference to the env if possible.
 pub struct SparkEnv {
-    config: Arc<SparkConfig>,
+    pub driver_addr: SocketAddr,
     executor_id: ExecutorId,
     broadcast_context: Arc<BroadcastContext>,
     rpc_client: OnceCell<Arc<SparkRpcClient>>,
@@ -31,10 +31,6 @@ impl SparkEnv {
         self.executor_id == ExecutorId::DRIVER
     }
 
-    pub fn config(&self) -> &Arc<SparkConfig> {
-        &self.config
-    }
-
     pub fn get_broadcast_context() -> Arc<BroadcastContext> {
         Self::get().broadcast_context()
     }
@@ -49,18 +45,18 @@ impl SparkEnv {
 
     pub async fn rpc_client(&self) -> SparkResult<Arc<SparkRpcClient>> {
         self.rpc_client
-            .get_or_try_init(|| rpc::create_client(&*self.config.driver_url))
+            .get_or_try_init(|| rpc::create_client(&self.driver_addr))
             .await
             .map(Arc::clone)
     }
 
     pub(crate) async fn init_for_driver(
-        config: Arc<SparkConfig>,
+        driver_addr: SocketAddr,
         mk_bcx: impl FnOnce() -> BroadcastContext,
     ) -> Arc<Self> {
         let init_env = || async move {
             Arc::new(SparkEnv {
-                config,
+                driver_addr,
                 executor_id: ExecutorId::DRIVER,
                 broadcast_context: Arc::new(mk_bcx()),
                 rpc_client: Default::default(),
@@ -70,14 +66,14 @@ impl SparkEnv {
     }
 
     pub(crate) async fn init_for_executor(
-        config: Arc<SparkConfig>,
+        driver_addr: SocketAddr,
         mk_bcx: impl FnOnce() -> BroadcastContext,
     ) -> SparkResult<Arc<Self>> {
         let init_env = || async move {
-            let rpc_client = rpc::create_client(&*config.driver_url).await?;
+            let rpc_client = rpc::create_client(&driver_addr).await?;
             let executor_id = rpc_client.alloc_executor_id(tarpc::context::current()).await?;
             Ok(Arc::new(SparkEnv {
-                config,
+                driver_addr,
                 executor_id,
                 rpc_client: OnceCell::from(rpc_client),
                 broadcast_context: Arc::new(mk_bcx()),

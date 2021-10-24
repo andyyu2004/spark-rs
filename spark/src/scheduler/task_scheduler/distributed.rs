@@ -7,6 +7,7 @@ use dashmap::DashMap;
 use futures::TryStreamExt;
 use rayon::ThreadPoolBuilder;
 use std::lazy::SyncOnceCell;
+use std::net::SocketAddr;
 use std::sync::Once;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -19,13 +20,13 @@ pub struct DistributedTaskSchedulerBackend {
 }
 
 impl DistributedTaskSchedulerBackend {
-    pub async fn new(config: Arc<SparkConfig>, url: &DistributedUrl) -> SparkResult<Self> {
+    pub async fn new(driver_addr: SocketAddr, url: &DistributedUrl) -> SparkResult<Self> {
         let backend = match url {
             DistributedUrl::Local { num_threads } =>
                 Arc::new(LocalExecutorBackend::new(*num_threads)),
         };
 
-        let executor = Executor::new(config, backend).await?;
+        let executor = Executor::new(driver_addr, backend).await?;
         Ok(Self { executor, task_dispatcher: Default::default(), txs: Default::default() })
     }
 

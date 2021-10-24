@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use bincode::Options;
 use futures::SinkExt;
 use rayon::ThreadPoolBuilder;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, BufReader};
 use tokio::sync::Mutex;
@@ -33,10 +34,10 @@ pub struct Executor {
 
 impl Executor {
     pub async fn new(
-        config: Arc<SparkConfig>,
+        driver_addr: SocketAddr,
         backend: Arc<dyn ExecutorBackend>,
     ) -> SparkResult<Arc<Self>> {
-        let env = SparkEnv::init_for_executor(config, BroadcastContext::new).await?;
+        let env = SparkEnv::init_for_executor(driver_addr, BroadcastContext::new).await?;
         Ok(Arc::new(Self { backend, env }))
     }
 

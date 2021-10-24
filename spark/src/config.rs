@@ -1,62 +1,12 @@
 use crate::SparkError;
 use serde::{Deserialize, Serialize};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs};
-use std::ops::Deref;
+use std::net::SocketAddr;
 use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SparkConfig {
     pub task_scheduler: TaskSchedulerConfig,
-    pub driver_url: DriverUrl,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DriverUrl(SocketAddr);
-
-impl DriverUrl {
-    pub fn into_inner(self) -> SocketAddr {
-        self.0
-    }
-
-    pub fn next_port(&mut self) -> bool {
-        let port = self.port();
-        if port >= u16::MAX {
-            false
-        } else {
-            self.0.set_port(1 + port);
-            true
-        }
-    }
-}
-
-impl FromStr for DriverUrl {
-    type Err = <SocketAddr as FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        SocketAddr::from_str(s).map(Self)
-    }
-}
-
-impl ToSocketAddrs for DriverUrl {
-    type Iter = <SocketAddr as ToSocketAddrs>::Iter;
-
-    fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
-        self.0.to_socket_addrs()
-    }
-}
-
-impl Deref for DriverUrl {
-    type Target = SocketAddr;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Default for DriverUrl {
-    fn default() -> Self {
-        Self(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8077)))
-    }
+    pub driver_addr: SocketAddr,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
