@@ -4,7 +4,6 @@ use crate::executor::ExecutorId;
 use crate::rpc::{self, SparkRpcClient};
 use crate::SparkResult;
 use std::sync::Arc;
-use tokio::net::ToSocketAddrs;
 use tokio::sync::OnceCell;
 
 static SPARK_ENV: OnceCell<Arc<SparkEnv>> = OnceCell::const_new();
@@ -32,8 +31,8 @@ impl SparkEnv {
         self.executor_id == ExecutorId::DRIVER
     }
 
-    pub fn driver_addr(&self) -> impl ToSocketAddrs + Clone + '_ {
-        &*self.config.driver_url
+    pub fn config(&self) -> &Arc<SparkConfig> {
+        &self.config
     }
 
     pub fn get_broadcast_context() -> Arc<BroadcastContext> {
@@ -58,7 +57,7 @@ impl SparkEnv {
     pub(crate) async fn init_for_driver(
         config: Arc<SparkConfig>,
         mk_bcx: impl FnOnce() -> BroadcastContext,
-    ) -> SparkResult<Arc<Self>> {
+    ) -> Arc<Self> {
         let init_env = || async move {
             Arc::new(SparkEnv {
                 config,
@@ -67,7 +66,7 @@ impl SparkEnv {
                 rpc_client: Default::default(),
             })
         };
-        Ok(Arc::clone(SPARK_ENV.get_or_init(init_env).await))
+        Arc::clone(SPARK_ENV.get_or_init(init_env).await)
     }
 
     pub(crate) async fn init_for_executor(

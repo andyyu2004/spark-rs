@@ -13,6 +13,22 @@ pub struct SparkConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DriverUrl(SocketAddr);
 
+impl DriverUrl {
+    pub fn into_inner(self) -> SocketAddr {
+        self.0
+    }
+
+    pub fn next_port(&mut self) -> bool {
+        let port = self.port();
+        if port >= u16::MAX {
+            false
+        } else {
+            self.0.set_port(1 + port);
+            true
+        }
+    }
+}
+
 impl FromStr for DriverUrl {
     type Err = <SocketAddr as FromStr>::Err;
 

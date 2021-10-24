@@ -1,5 +1,6 @@
 use super::*;
 use crate::broadcast::BroadcastId;
+use crate::config::DriverUrl;
 use crate::executor::ExecutorId;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -37,18 +38,30 @@ pub trait SparkRpc {
 
 #[derive(Clone)]
 pub struct SparkRpcServer {
-    scx: Arc<SparkContext>,
+    rcx: Arc<RpcContext>,
 }
 
 impl SparkRpcServer {
-    pub fn new(scx: Arc<SparkContext>) -> Self {
-        Self { scx }
+    pub fn new(rcx: Arc<RpcContext>) -> Self {
+        Self { rcx }
     }
 
-    pub async fn start(self) -> SparkResult<JoinHandle<()>> {
+    pub async fn start(self) -> SparkResult<(DriverUrl, JoinHandle<()>)> {
+        let env = SparkEnv::get();
         let mk_codec = tokio_serde::formats::Bincode::default;
-        let mut listener =
-            tarpc::serde_transport::tcp::listen(self.scx.env().driver_addr(), mk_codec).await?;
+        let mut bind_addr = env.config().driver_url.clone();
+        let mut listener = loop {
+            if let Ok(listener) = tarpc::serde_transport::tcp::listen(&*bind_addr, mk_codec).await {
+                break listener;
+            }
+
+            if !bind_addr.next_port() {
+                bail!("failed to bind to any port from `{}` onwards", &*env.config().driver_url)
+            }
+        };
+
+        info!("rpc server bound to `{}`", *bind_addr);
+
         let handle = tokio::spawn(async move {
             listener.config_mut().max_frame_length(usize::MAX);
             listener
@@ -62,14 +75,15 @@ impl SparkRpcServer {
                 .await;
             panic!("rpc service finished");
         });
-        Ok(handle)
+
+        Ok((bind_addr, handle))
     }
 }
 
 #[tarpc::server]
 impl SparkRpc for SparkRpcServer {
     async fn alloc_executor_id(self, _context: Context) -> ExecutorId {
-        self.scx.next_executor_id()
+        self.rcx.next_executor_id()
     }
 
     async fn get_broadcasted_item(
@@ -77,7 +91,7 @@ impl SparkRpc for SparkRpcServer {
         _context: Context,
         id: BroadcastId,
     ) -> SparkRpcResult<Vec<u8>> {
-        let bcx = self.scx.broadcast_context();
+        let bcx = self.rcx.env().broadcast_context();
         let bytes = bcx
             .get_broadcasted_bytes(id)
             .await

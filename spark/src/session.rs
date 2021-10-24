@@ -1,9 +1,8 @@
 use crate::config::{DriverUrl, SparkConfig, TaskSchedulerConfig};
 use crate::{SparkContext, SparkResult};
-use std::net::SocketAddr;
 use std::sync::Arc;
 
-const DEFAULT_PORT: u16 = 8077;
+pub const DEFAULT_PORT: u16 = 8077;
 
 pub struct SparkSession {
     scx: Arc<SparkContext>,
@@ -29,7 +28,8 @@ impl SparkSessionBuilder {
     pub async fn create(self) -> SparkResult<SparkSession> {
         let Self { task_scheduler, driver_url } = self;
         let config = SparkConfig { task_scheduler, driver_url };
-        Ok(SparkSession { scx: SparkContext::new(Arc::new(config)).await? })
+        let scx = SparkContext::new(Arc::new(config)).await?;
+        Ok(SparkSession { scx })
     }
 
     pub fn master_url(mut self, master_url: TaskSchedulerConfig) -> Self {

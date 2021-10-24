@@ -29,6 +29,13 @@ impl BroadcastContext {
     pub fn new() -> Self {
         Self { broadcast_idx: Default::default(), cached: Default::default() }
     }
+
+    pub fn new_broadcast<T: Datum>(&self, scx: &Arc<SparkContext>, datum: T) -> Broadcast<T> {
+        let broadcast_id = self.next_broadcast_id();
+        let serialized = bincode::serialize(&datum).unwrap();
+        self.cached.insert(broadcast_id, serialized);
+        Broadcast { broadcast_id, scx: Arc::downgrade(scx), datum: OnceCell::from(datum) }
+    }
 }
 
 impl BroadcastContext {
@@ -44,6 +51,7 @@ impl BroadcastContext {
                 assert!(!env.is_driver(), "driver should have all broadcasts in cache");
                 let client = SparkEnv::get_rpc_client().await?;
                 let item = client.get_broadcasted_item(tarpc::context::current(), id).await??;
+                panic!();
                 Ok(entry.insert(item).downgrade())
             }
         }
@@ -56,9 +64,7 @@ impl BroadcastContext {
 
 impl<T: Datum> Broadcast<T> {
     pub fn new(scx: &Arc<SparkContext>, datum: T) -> Self {
-        let backend = scx.broadcast_context();
-        let broadcast_id = backend.next_broadcast_id();
-        Self { broadcast_id, scx: Arc::downgrade(scx), datum: OnceCell::from(datum) }
+        scx.broadcast_context().new_broadcast(scx, datum)
     }
 
     pub async fn get(&self) -> SparkResult<&T> {
