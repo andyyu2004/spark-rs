@@ -2,7 +2,6 @@ mod backend;
 mod local;
 
 use crate::broadcast::BroadcastContext;
-use crate::config::SparkConfig;
 use crate::scheduler::{Task, TaskOutput};
 use crate::{newtype_index, SparkEnv, SparkResult};
 use async_bincode::AsyncBincodeWriter;

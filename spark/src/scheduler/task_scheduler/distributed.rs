@@ -1,6 +1,4 @@
 use super::*;
-use crate::config::{DistributedUrl, SparkConfig};
-use crate::executor::{Executor, LocalExecutorBackend};
 use async_bincode::AsyncBincodeReader;
 use bincode::Options;
 use dashmap::DashMap;
@@ -8,26 +6,29 @@ use futures::TryStreamExt;
 use rayon::ThreadPoolBuilder;
 use std::lazy::SyncOnceCell;
 use std::net::SocketAddr;
+use std::process::Stdio;
 use std::sync::Once;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 
 pub const TASK_LIMIT: usize = 100;
 
 pub struct DistributedTaskSchedulerBackend {
-    executor: Arc<Executor>,
+    driver_addr: SocketAddr,
     txs: DashMap<TaskId, TaskSender>,
     task_dispatcher: SyncOnceCell<tokio::sync::mpsc::Sender<Task>>,
 }
 
-impl DistributedTaskSchedulerBackend {
-    pub async fn new(driver_addr: SocketAddr, url: &DistributedUrl) -> SparkResult<Self> {
-        let backend = match url {
-            DistributedUrl::Local { num_threads } =>
-                Arc::new(LocalExecutorBackend::new(*num_threads)),
-        };
+struct ExecutorProcess {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+}
 
-        let executor = Executor::new(driver_addr, backend).await?;
-        Ok(Self { executor, task_dispatcher: Default::default(), txs: Default::default() })
+impl DistributedTaskSchedulerBackend {
+    pub fn new(driver_addr: SocketAddr) -> Self {
+        Self { driver_addr, txs: Default::default(), task_dispatcher: Default::default() }
     }
 
     async fn dispatch_tasks(
@@ -58,29 +59,42 @@ impl DistributedTaskSchedulerBackend {
                 let serialized_size = buffer.len() as u32 - 4;
                 buffer[0..4].copy_from_slice(&serialized_size.to_be_bytes());
                 trace!("finish serializing task `{:?}`", task.id());
-                tx.send(buffer).expect("receiver hung up unexpectedly");
+                tx.send(buffer).expect("dispatch receiver hung up unexpectedly");
             })
         }
         Ok::<_, SparkError>(())
+    }
+
+    fn spawn_executor(&self) -> SparkResult<ExecutorProcess> {
+        let mut child = tokio::process::Command::new("spark-submit")
+            .arg("--driver-addr")
+            .arg(&self.driver_addr.to_string())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        Ok(ExecutorProcess {
+            stdin: child.stdin.take().unwrap(),
+            stdout: child.stdout.take().unwrap(),
+            stderr: child.stderr.take().unwrap(),
+            child,
+        })
     }
 
     #[instrument(skip(self))]
     async fn start(self: Arc<Self>) -> SparkResult<()> {
         trace!("start distributed task_scheduler backend");
         let (task_dispatcher, task_receiver) = tokio::sync::mpsc::channel(TASK_LIMIT);
-        let (writer, executor_reader) = async_pipe::pipe();
+        let executor = self.spawn_executor()?;
 
         // The reason for handling the sending of the writer over a separate task is because
         // `send` on a channel sender only requires `&self` while `send` on the `Sink` requires `&mut self`,
         // and so if we were to send on the Sink directly from `run_task` we would need a mutex.
-        let dispatcher_handle = tokio::spawn(Self::dispatch_tasks(task_receiver, writer));
+        let dispatcher_handle = tokio::spawn(Self::dispatch_tasks(task_receiver, executor.stdin));
         self.task_dispatcher.set(task_dispatcher).unwrap();
 
-        let executor = Arc::clone(&self.executor);
-        let (executor_writer, reader) = async_pipe::pipe();
-        let executor_handle = tokio::spawn(executor.execute(executor_reader, executor_writer));
-
-        let stream = AsyncBincodeReader::<_, TaskOutput>::from(reader);
+        let stream = AsyncBincodeReader::<_, TaskOutput>::from(executor.stdout);
         stream
             .try_for_each(|output @ (task_id, _)| {
                 trace!("recv completed task `{:?}`", task_id);
@@ -93,7 +107,6 @@ impl DistributedTaskSchedulerBackend {
             .await?;
 
         dispatcher_handle.await??;
-        executor_handle.await??;
         Ok(())
     }
 }

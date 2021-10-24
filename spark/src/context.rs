@@ -51,9 +51,10 @@ impl SparkContext {
         let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match &config.task_scheduler {
             TaskSchedulerConfig::Local { num_threads } =>
                 Arc::new(LocalTaskSchedulerBackend::new(*num_threads)),
-            TaskSchedulerConfig::Distributed { url } =>
-                Arc::new(DistributedTaskSchedulerBackend::new(bind_addr.clone(), url).await?),
+            TaskSchedulerConfig::Distributed { url: _ } =>
+                Arc::new(DistributedTaskSchedulerBackend::new(bind_addr.clone())),
         };
+
         let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));
 
         let scx = Arc::new(Self {

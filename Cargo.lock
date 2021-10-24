@@ -1400,6 +1400,8 @@ dependencies = [
  "tarpc",
  "tokio",
  "tokio-serde",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

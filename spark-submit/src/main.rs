@@ -4,6 +4,9 @@ use spark::SparkResult;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+#[macro_use]
+extern crate tracing;
+
 #[derive(Parser)]
 struct Opts {
     #[clap(long)]
@@ -12,8 +15,10 @@ struct Opts {
 
 #[tokio::main]
 async fn main() -> SparkResult<()> {
+    tracing_subscriber::fmt::init();
     let Opts { driver_addr } = Opts::parse();
 
+    info!("spark-submit");
     let backend = Arc::new(LocalExecutorBackend::new(num_cpus::get()));
     let executor = Executor::new(driver_addr, backend).await?;
     if let Err(err) = executor.execute(tokio::io::stdin(), tokio::io::stdout()).await {
