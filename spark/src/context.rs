@@ -96,6 +96,14 @@ impl SparkContext {
         self.parallelize(data)
     }
 
+    pub fn parallelize_iter<T: CloneDatum>(
+        self: Arc<Self>,
+        data: impl IntoIterator<Item = T>,
+    ) -> Arc<impl TypedRdd<Element = T>> {
+        let data = data.into_iter().collect::<Vec<_>>();
+        self.parallelize(&data)
+    }
+
     pub fn parallelize<T: CloneDatum>(
         self: Arc<Self>,
         data: &[T],
