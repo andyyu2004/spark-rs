@@ -1,5 +1,5 @@
 use super::*;
-use serde::de::Visitor;
+use serde::de::{DeserializeOwned, Visitor};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
@@ -42,6 +42,8 @@ impl<'de> Visitor<'de> for PyVisitor {
         })
     }
 }
+
+static_assertions::assert_impl_all!(SerdePyObject: DeserializeOwned);
 
 impl<'de> Deserialize<'de> for SerdePyObject {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

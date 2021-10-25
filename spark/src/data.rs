@@ -2,8 +2,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt::Debug;
 
-pub trait Datum = Send
-    + Debug
+pub trait Datum = Debug
+    + Send
     + Sync
     + Serialize
     + DeserializeOwned

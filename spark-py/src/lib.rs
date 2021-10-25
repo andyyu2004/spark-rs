@@ -1,3 +1,9 @@
+#![feature(trait_alias)]
+
+#[macro_use]
+extern crate async_trait;
+
+mod rdd;
 mod serialize;
 
 use pyo3::prelude::*;
@@ -7,6 +13,8 @@ use spark::rdd::{TypedRdd, TypedRddExt, TypedRddRef};
 use spark::{SparkContext, SparkSession};
 use std::sync::Arc;
 
+use self::rdd::PyParallelCollectionRdd;
+
 // Error handling is a bit broken with eyre/anyhow
 // Eyre's pyo3 feature is out of date or something
 // Pyo3 is planning to have a anyhow and eyre feature next version
@@ -14,6 +22,7 @@ use std::sync::Arc;
 
 /// Use this macro for an easy find and replace with ? when the time comes
 /// (To distinguish from when we actually want to unwrap)
+#[macro_export]
 macro_rules! unwrap {
     ($expr:expr) => {
         $expr.unwrap()
@@ -67,11 +76,11 @@ impl PySparkContext {
         })
     }
 
-    pub fn parallelize(&self, data: Vec<PyObject>) -> PyResult<PyRdd> {
+    pub fn parallelize(&self, data: Vec<PyObject>) -> PyResult<PyParallelCollectionRdd> {
         let serializable_py_objects =
             data.into_iter().map(SerdePyObject).collect::<Vec<SerdePyObject>>();
-        let inner = self.scx().parallelize_iter(serializable_py_objects).as_typed_ref();
-        Ok(PyRdd { scx: self.clone(), inner })
+        let inner = self.scx().parallelize_iter(serializable_py_objects);
+        Ok(PyParallelCollectionRdd { inner })
     }
 
     pub fn collect_rdd<'py>(&self, py: Python<'py>, py_rdd: &PyRdd) -> PyResult<&'py PyAny> {

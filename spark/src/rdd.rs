@@ -1,9 +1,9 @@
 mod map;
 mod parallel_collection;
 
+pub use map::MapRdd;
 pub use parallel_collection::ParallelCollection;
 
-use self::map::Map;
 use crate::serialize::SerdeArc;
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -127,11 +127,11 @@ pub trait TypedRdd: Rdd {
         partition: PartitionIdx,
     ) -> SparkResult<SparkIteratorRef<Self::Element>>;
 
-    fn map<F>(self: Arc<Self>, f: F) -> Map<Self, F>
+    fn map<F>(self: Arc<Self>, f: F) -> Arc<MapRdd<Self::Element, F>>
     where
         Self: Sized,
     {
-        Map::new(self, f)
+        Arc::new(MapRdd::new(self.as_typed_ref(), f))
     }
 }
 

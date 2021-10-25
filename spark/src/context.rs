@@ -99,15 +99,12 @@ impl SparkContext {
     pub fn parallelize_iter<T: CloneDatum>(
         self: Arc<Self>,
         data: impl IntoIterator<Item = T>,
-    ) -> Arc<impl TypedRdd<Element = T>> {
+    ) -> Arc<ParallelCollection<T>> {
         let data = data.into_iter().collect::<Vec<_>>();
         self.parallelize(&data)
     }
 
-    pub fn parallelize<T: CloneDatum>(
-        self: Arc<Self>,
-        data: &[T],
-    ) -> Arc<impl TypedRdd<Element = T>> {
+    pub fn parallelize<T: CloneDatum>(self: Arc<Self>, data: &[T]) -> Arc<ParallelCollection<T>> {
         let num_slices = self.task_scheduler().default_parallelism();
         self.parallelize_with_slices(data, num_slices)
     }
@@ -116,7 +113,7 @@ impl SparkContext {
         self: Arc<Self>,
         data: &[T],
         num_slices: usize,
-    ) -> Arc<impl TypedRdd<Element = T>> {
+    ) -> Arc<ParallelCollection<T>> {
         Arc::new(ParallelCollection::new(self, data, num_slices))
     }
 

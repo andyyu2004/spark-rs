@@ -1,31 +1,29 @@
-use crate::data::CloneDatum;
-
 use super::*;
-use serde::de::DeserializeOwned;
+use crate::data::CloneDatum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct Map<R, F> {
+pub struct MapRdd<T: 'static, F> {
     id: RddId,
-    rdd: Arc<R>,
+    rdd: TypedRddRef<T>,
     f: F,
 }
 
-impl<R: Rdd, F> Map<R, F> {
-    pub fn new(rdd: Arc<R>, f: F) -> Self {
-        let rdd_id = rdd.scx().next_rdd_id();
-        Self { id: rdd_id, rdd, f }
+impl<T, F> MapRdd<T, F> {
+    pub fn new(rdd: TypedRddRef<T>, f: F) -> Self {
+        let id = rdd.scx().next_rdd_id();
+        Self { id, rdd, f }
     }
 }
 
-impl<R: Rdd, F> std::fmt::Debug for Map<R, F> {
+impl<T, F> std::fmt::Debug for MapRdd<T, F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Map").field("id", &self.id).field("rdd", &self.rdd).finish_non_exhaustive()
     }
 }
 
 #[async_trait]
-impl<R: Rdd + Serialize + DeserializeOwned, F: Datum> Rdd for Map<R, F> {
+impl<T: CloneDatum, F: Datum> Rdd for MapRdd<T, F> {
     fn id(&self) -> RddId {
         self.id
     }
@@ -43,13 +41,13 @@ impl<R: Rdd + Serialize + DeserializeOwned, F: Datum> Rdd for Map<R, F> {
     }
 }
 
-impl<R, F, T> TypedRdd for Map<R, F>
+impl<T, U, F> TypedRdd for MapRdd<T, F>
 where
-    R: TypedRdd + Serialize + DeserializeOwned,
     T: CloneDatum,
-    F: Fn(R::Element) -> T + CloneDatum,
+    U: CloneDatum,
+    F: Fn(T) -> U + CloneDatum,
 {
-    type Element = T;
+    type Element = U;
 
     fn as_untyped(self: Arc<Self>) -> RddRef {
         RddRef::from_inner(self)
