@@ -3,7 +3,7 @@ mod serialize;
 use pyo3::prelude::*;
 use pyo3::types::{PyFunction, PyList};
 use serialize::SerdePyObject;
-use spark::rdd::{TypedRddExt, TypedRddRef};
+use spark::rdd::{TypedRdd, TypedRddExt, TypedRddRef};
 use spark::{SparkContext, SparkSession};
 use std::sync::Arc;
 
@@ -58,7 +58,7 @@ impl PySparkContext {
         py: Python<'py>,
         f: &PyFunction,
     ) -> PyResult<&'py PyAny> {
-        let x = serde_closure::Fn!(|| f.call0());
+        // let x = serde_closure::Fn!(|| f.call0());
         let rdd = self.scx().parallelize(&[3]);
 
         pyo3_asyncio::tokio::future_into_py(py, async move {
@@ -67,17 +67,20 @@ impl PySparkContext {
         })
     }
 
-    pub fn parallelize(&self, py: Python<'_>, data: Vec<PyObject>) -> PyResult<PyRdd> {
-        // Vector over the serialized representation of each element
+    pub fn parallelize(&self, data: Vec<PyObject>) -> PyResult<PyRdd> {
         let serializable_py_objects =
             data.into_iter().map(SerdePyObject).collect::<Vec<SerdePyObject>>();
-        let rdd = self.scx().parallelize_iter(serializable_py_objects);
-        todo!();
-        // Ok(PyRdd { scx: self.scx(), inner: rdd })
+        let inner = self.scx().parallelize_iter(serializable_py_objects).as_typed_ref();
+        Ok(PyRdd { scx: self.scx(), inner })
     }
 
     pub fn collect_rdd<'py>(&self, py: Python<'py>, rdd: PyRdd) -> PyResult<&'py PyList> {
+        // let rdd: TypedRddRef<SerdePyObject> = rdd.inner;
+        // let rdd: Arc<dyn TypedRdd<Element = SerdePyObject>> = rdd.into_inner();
+        // rdd.collect();
         // rdd.inner.collect();
+        // TypedRddExt::collect(rdd);
+        // self.scx().collect_rdd(rdd, todo!());
         todo!()
     }
 }
@@ -86,7 +89,7 @@ impl PySparkContext {
 #[derive(Clone)]
 pub struct PyRdd {
     scx: Arc<SparkContext>,
-    inner: TypedRddRef<Vec<u8>>,
+    inner: TypedRddRef<SerdePyObject>,
 }
 
 #[pymodule]

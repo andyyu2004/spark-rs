@@ -104,7 +104,7 @@ pub trait Rdd:
 pub trait TypedRdd: Rdd {
     type Element: CloneDatum;
 
-    /// Convert the `Arc<TypedRdd>` to a `RddRef`
+    /// Convert the [`Arc<TypedRdd>`] to a [`RddRef`]
     /// Can be implemented as the following.
     /// ```
     /// fn as_untyped(self: Arc<Self>) -> RddRef {
@@ -114,10 +114,17 @@ pub trait TypedRdd: Rdd {
     /// But this doesn't work as a default implementation unfortunately.
     fn as_untyped(self: Arc<Self>) -> RddRef;
 
+    /// Convert concrete [`TypedRdd`] type to a [`TypedRddRef`]
+    /// Can be implemented as follows
+    /// ```
+    /// TypedRddRef::from_inner(self as Arc<dyn TypedRdd<Element = Self::Element>>)
+    /// ```
+    fn as_typed_ref(self: Arc<Self>) -> TypedRddRef<Self::Element>;
+
     fn compute(
         self: Arc<Self>,
         cx: &mut TaskContext,
-        split: PartitionIdx,
+        partition: PartitionIdx,
     ) -> SparkResult<SparkIteratorRef<Self::Element>>;
 
     fn map<F>(self: Arc<Self>, f: F) -> Map<Self, F>
@@ -126,17 +133,10 @@ pub trait TypedRdd: Rdd {
     {
         Map::new(self, f)
     }
-
-    fn as_typed_ref(self: Arc<Self>) -> TypedRddRef<Self::Element>
-    where
-        Self: Sized,
-    {
-        SerdeArc::from(self as Arc<dyn TypedRdd<Element = Self::Element>>)
-    }
 }
 
 #[async_trait]
-pub trait TypedRddExt: TypedRdd + Sized {
+pub trait TypedRddExt: TypedRdd {
     async fn collect(self: Arc<Self>) -> SparkResult<Vec<Self::Element>> {
         let scx = self.scx();
         let f = Fn!(|_cx: &mut TaskContext, iter: SparkIteratorRef<Self::Element>| iter
@@ -146,7 +146,7 @@ pub trait TypedRddExt: TypedRdd + Sized {
     }
 }
 
-impl<R: TypedRdd> TypedRddExt for R {
+impl<R: TypedRdd + ?Sized> TypedRddExt for R {
 }
 
 fn _rdd_is_dyn_safe<T>(_rdd: Box<dyn TypedRdd<Element = T>>) {

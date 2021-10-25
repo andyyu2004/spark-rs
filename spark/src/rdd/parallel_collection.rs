@@ -69,6 +69,10 @@ impl<T: CloneDatum> TypedRdd for ParallelCollection<T> {
         RddRef::from_inner(self)
     }
 
+    fn as_typed_ref(self: Arc<Self>) -> TypedRddRef<Self::Element> {
+        TypedRddRef::from_inner(self as Arc<dyn TypedRdd<Element = Self::Element>>)
+    }
+
     fn compute(
         self: Arc<Self>,
         _cx: &mut TaskContext,

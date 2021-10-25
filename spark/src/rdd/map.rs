@@ -55,11 +55,15 @@ where
         RddRef::from_inner(self)
     }
 
+    fn as_typed_ref(self: Arc<Self>) -> TypedRddRef<Self::Element> {
+        TypedRddRef::from_inner(self as Arc<dyn TypedRdd<Element = Self::Element>>)
+    }
+
     fn compute(
         self: Arc<Self>,
         cx: &mut TaskContext,
-        split: PartitionIdx,
+        partition: PartitionIdx,
     ) -> SparkResult<SparkIteratorRef<Self::Element>> {
-        Ok(Box::new(Arc::clone(&self.rdd).compute(cx, split)?.map(self.f.clone())))
+        Ok(Box::new(Arc::clone(&self.rdd).compute(cx, partition)?.map(self.f.clone())))
     }
 }
