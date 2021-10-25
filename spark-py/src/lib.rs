@@ -71,25 +71,30 @@ impl PySparkContext {
         let serializable_py_objects =
             data.into_iter().map(SerdePyObject).collect::<Vec<SerdePyObject>>();
         let inner = self.scx().parallelize_iter(serializable_py_objects).as_typed_ref();
-        Ok(PyRdd { scx: self.scx(), inner })
+        Ok(PyRdd { scx: self.clone(), inner })
     }
 
-    pub fn collect_rdd<'py>(&self, py: Python<'py>, rdd: PyRdd) -> PyResult<&'py PyList> {
-        // let rdd: TypedRddRef<SerdePyObject> = rdd.inner;
-        // let rdd: Arc<dyn TypedRdd<Element = SerdePyObject>> = rdd.into_inner();
-        // rdd.collect();
-        // rdd.inner.collect();
-        // TypedRddExt::collect(rdd);
-        // self.scx().collect_rdd(rdd, todo!());
-        todo!()
+    pub fn collect_rdd<'py>(&self, py: Python<'py>, py_rdd: &PyRdd) -> PyResult<&'py PyAny> {
+        let rdd = py_rdd.inner.clone().into_inner();
+        pyo3_asyncio::tokio::future_into_py(py, async move {
+            let output: Vec<SerdePyObject> = unwrap!(rdd.collect().await);
+            Python::with_gil(|py| Ok(PyList::new(py, output).to_object(py)))
+        })
     }
 }
 
 #[pyclass(name = "Rdd")]
 #[derive(Clone)]
 pub struct PyRdd {
-    scx: Arc<SparkContext>,
+    scx: PySparkContext,
     inner: TypedRddRef<SerdePyObject>,
+}
+
+#[pymethods]
+impl PyRdd {
+    pub fn collect<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+        self.scx.collect_rdd(py, self)
+    }
 }
 
 #[pymodule]

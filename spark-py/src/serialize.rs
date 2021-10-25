@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct SerdePyObject(pub(super) PyObject);
 
+impl ToPyObject for SerdePyObject {
+    fn to_object(&self, _py: Python) -> PyObject {
+        self.0.clone()
+    }
+}
+
 impl Serialize for SerdePyObject {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
