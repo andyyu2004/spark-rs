@@ -49,7 +49,7 @@ impl BroadcastContext {
             Entry::Vacant(entry) => {
                 let env = SparkEnv::get();
                 assert!(!env.is_driver(), "driver should have all broadcasts in cache");
-                let client = SparkEnv::get_rpc_client().await?;
+                let client = SparkEnv::get_driver_rpc_client().await?;
                 let item = client.get_broadcasted_item(tarpc::context::current(), id).await??;
                 Ok(entry.insert(item).downgrade())
             }

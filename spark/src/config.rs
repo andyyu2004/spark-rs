@@ -7,6 +7,7 @@ use std::str::FromStr;
 pub struct SparkConfig {
     pub task_scheduler: TaskSchedulerConfig,
     pub driver_addr: SocketAddr,
+    pub master_addr: SocketAddr,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

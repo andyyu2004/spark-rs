@@ -1,6 +1,6 @@
 use crate::broadcast::BroadcastContext;
 use crate::executor::ExecutorId;
-use crate::rpc::{self, SparkRpcClient};
+use crate::rpc::{self, SparkDriverRpcClient};
 use crate::SparkResult;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ pub struct SparkEnv {
     pub driver_addr: SocketAddr,
     executor_id: ExecutorId,
     broadcast_context: Arc<BroadcastContext>,
-    rpc_client: OnceCell<Arc<SparkRpcClient>>,
+    driver_rpc_client: OnceCell<Arc<SparkDriverRpcClient>>,
 }
 
 impl SparkEnv {
@@ -39,13 +39,13 @@ impl SparkEnv {
         Arc::clone(&self.broadcast_context)
     }
 
-    pub async fn get_rpc_client() -> SparkResult<Arc<SparkRpcClient>> {
-        Self::get().rpc_client().await
+    pub async fn get_driver_rpc_client() -> SparkResult<Arc<SparkDriverRpcClient>> {
+        Self::get().driver_rpc_client().await
     }
 
-    pub async fn rpc_client(&self) -> SparkResult<Arc<SparkRpcClient>> {
-        self.rpc_client
-            .get_or_try_init(|| rpc::create_client(&self.driver_addr))
+    pub async fn driver_rpc_client(&self) -> SparkResult<Arc<SparkDriverRpcClient>> {
+        self.driver_rpc_client
+            .get_or_try_init(|| rpc::create_driver_rpc_client(&self.driver_addr))
             .await
             .map(Arc::clone)
     }
@@ -59,7 +59,7 @@ impl SparkEnv {
                 driver_addr,
                 executor_id: ExecutorId::DRIVER,
                 broadcast_context: Arc::new(mk_bcx()),
-                rpc_client: Default::default(),
+                driver_rpc_client: Default::default(),
             })
         };
         Arc::clone(SPARK_ENV.get_or_init(init_env).await)
@@ -70,12 +70,12 @@ impl SparkEnv {
         mk_bcx: impl FnOnce() -> BroadcastContext,
     ) -> SparkResult<Arc<Self>> {
         let init_env = || async move {
-            let rpc_client = rpc::create_client(&driver_addr).await?;
+            let rpc_client = rpc::create_driver_rpc_client(&driver_addr).await?;
             let executor_id = rpc_client.alloc_executor_id(tarpc::context::current()).await?;
             Ok(Arc::new(SparkEnv {
                 driver_addr,
                 executor_id,
-                rpc_client: OnceCell::from(rpc_client),
+                driver_rpc_client: OnceCell::from(rpc_client),
                 broadcast_context: Arc::new(mk_bcx()),
             }))
         };

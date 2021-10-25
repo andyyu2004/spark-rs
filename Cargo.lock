@@ -1538,6 +1538,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "spark-start-master"
+version = "0.1.0"
+dependencies = [
+ "clap 3.0.0-beta.5",
+ "spark",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "spark-start-worker"
+version = "0.1.0"
+dependencies = [
+ "clap 3.0.0-beta.5",
+ "spark",
+ "tarpc",
+ "tokio",
+]
+
+[[package]]
 name = "spark-submit"
 version = "0.1.0"
 dependencies = [

@@ -21,27 +21,31 @@ pub enum SparkRpcError {
     Todo(String),
 }
 
-pub async fn create_client(server_addr: impl ToSocketAddrs) -> SparkResult<Arc<SparkRpcClient>> {
+pub async fn create_driver_rpc_client(
+    server_addr: impl ToSocketAddrs,
+) -> SparkResult<Arc<SparkDriverRpcClient>> {
     let mk_codec = tokio_serde::formats::Bincode::default;
     let connect = tarpc::serde_transport::tcp::connect(server_addr, mk_codec);
     let transport = tokio::time::timeout(Duration::from_secs(5), connect)
         .await
         .map_err(|_| eyre!("connection to master timed out"))??;
-    Ok(Arc::new(SparkRpcClient::new(tarpc::client::Config::default(), transport).spawn()))
+    Ok(Arc::new(SparkDriverRpcClient::new(tarpc::client::Config::default(), transport).spawn()))
 }
 
+/// This is mostly a short term solution to get broadcasting somewhat working.
+/// However, all the load is on the driver so this will be a bottleneck.
 #[tarpc::service]
-pub trait SparkRpc {
+pub trait SparkDriverRpc {
     async fn alloc_executor_id() -> ExecutorId;
     async fn get_broadcasted_item(id: BroadcastId) -> SparkRpcResult<Vec<u8>>;
 }
 
 #[derive(Clone)]
-pub struct SparkRpcServer {
+pub struct SparkDriverRpcServer {
     rcx: Arc<RpcContext>,
 }
 
-impl SparkRpcServer {
+impl SparkDriverRpcServer {
     pub fn new(rcx: Arc<RpcContext>) -> Self {
         Self { rcx }
     }
@@ -89,7 +93,7 @@ impl SparkRpcServer {
 }
 
 #[tarpc::server]
-impl SparkRpc for SparkRpcServer {
+impl SparkDriverRpc for SparkDriverRpcServer {
     async fn alloc_executor_id(self, _context: Context) -> ExecutorId {
         self.rcx.next_executor_id()
     }

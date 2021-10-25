@@ -65,7 +65,7 @@ impl PySparkContext {
     pub fn higher_order_experiment<'py>(
         &self,
         py: Python<'py>,
-        f: &PyFunction,
+        _f: &PyFunction,
     ) -> PyResult<&'py PyAny> {
         // let x = serde_closure::Fn!(|| f.call0());
         let rdd = self.scx().parallelize(&[3]);

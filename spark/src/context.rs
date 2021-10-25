@@ -1,10 +1,11 @@
 use crate::broadcast::{Broadcast, BroadcastContext};
+use crate::cluster::{ClusterScheduler, StandaloneClusterScheduler};
 use crate::config::{SparkConfig, TaskSchedulerConfig};
 use crate::data::{CloneDatum, Datum};
 use crate::env::SparkEnv;
 use crate::executor::ExecutorId;
 use crate::rdd::*;
-use crate::rpc::SparkRpcServer;
+use crate::rpc::SparkDriverRpcServer;
 use crate::scheduler::*;
 use crate::*;
 use indexed_vec::Idx;
@@ -44,15 +45,18 @@ impl SparkContext {
             executor_idx: AtomicUsize::new(1),
         });
 
-        let (bind_addr, _) = SparkRpcServer::new(rcx).bind(&config.driver_addr).await?;
+        let (bind_addr, _) = SparkDriverRpcServer::new(rcx).bind(&config.driver_addr).await?;
 
         let env = SparkEnv::init_for_driver(bind_addr, BroadcastContext::new).await;
 
         let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match &config.task_scheduler {
             TaskSchedulerConfig::Local { num_threads } =>
                 Arc::new(LocalTaskSchedulerBackend::new(*num_threads)),
-            TaskSchedulerConfig::Distributed { url: _ } =>
-                Arc::new(DistributedTaskSchedulerBackend::new(bind_addr)),
+            TaskSchedulerConfig::Distributed { url: _ } => {
+                let cluster_scheduler =
+                    ClusterScheduler::new(StandaloneClusterScheduler::new().await?);
+                Arc::new(DistributedTaskSchedulerBackend::new(cluster_scheduler, bind_addr))
+            }
         };
 
         let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));

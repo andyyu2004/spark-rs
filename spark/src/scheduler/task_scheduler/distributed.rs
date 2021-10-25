@@ -1,4 +1,5 @@
 use super::*;
+use crate::cluster::ClusterScheduler;
 use async_bincode::AsyncBincodeReader;
 use bincode::Options;
 use dashmap::DashMap;
@@ -14,6 +15,7 @@ use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 pub const TASK_LIMIT: usize = 100;
 
 pub struct DistributedTaskSchedulerBackend {
+    cluster_scheduler: ClusterScheduler,
     driver_addr: SocketAddr,
     txs: DashMap<TaskId, TaskSender>,
     task_dispatcher: SyncOnceCell<tokio::sync::mpsc::Sender<Task>>,
@@ -27,8 +29,13 @@ struct ExecutorProcess {
 }
 
 impl DistributedTaskSchedulerBackend {
-    pub fn new(driver_addr: SocketAddr) -> Self {
-        Self { driver_addr, txs: Default::default(), task_dispatcher: Default::default() }
+    pub fn new(cluster_scheduler: ClusterScheduler, driver_addr: SocketAddr) -> Self {
+        Self {
+            cluster_scheduler,
+            driver_addr,
+            txs: Default::default(),
+            task_dispatcher: Default::default(),
+        }
     }
 
     async fn dispatch_tasks(

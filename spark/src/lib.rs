@@ -20,6 +20,7 @@ mod iter;
 mod partition;
 mod session;
 
+pub mod cluster;
 pub mod config;
 pub mod executor;
 pub mod rdd;
