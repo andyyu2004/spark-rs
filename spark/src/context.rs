@@ -46,13 +46,13 @@ impl SparkContext {
 
         let (bind_addr, _) = SparkRpcServer::new(rcx).bind(&config.driver_addr).await?;
 
-        let env = SparkEnv::init_for_driver(bind_addr.clone(), BroadcastContext::new).await;
+        let env = SparkEnv::init_for_driver(bind_addr, BroadcastContext::new).await;
 
         let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match &config.task_scheduler {
             TaskSchedulerConfig::Local { num_threads } =>
                 Arc::new(LocalTaskSchedulerBackend::new(*num_threads)),
             TaskSchedulerConfig::Distributed { url: _ } =>
-                Arc::new(DistributedTaskSchedulerBackend::new(bind_addr.clone())),
+                Arc::new(DistributedTaskSchedulerBackend::new(bind_addr)),
         };
 
         let task_scheduler = Arc::new(TaskScheduler::new(task_scheduler_backend));

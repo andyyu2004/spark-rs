@@ -55,14 +55,14 @@ impl SparkRpcServer {
     /// and returns the port that was bound.
     pub async fn bind(self, config_addr: &SocketAddr) -> SparkResult<(SocketAddr, JoinHandle<()>)> {
         let mk_codec = tokio_serde::formats::Bincode::default;
-        let mut bind_addr = config_addr.clone();
+        let mut bind_addr = *config_addr;
         let mut listener = loop {
             if let Ok(listener) = tarpc::serde_transport::tcp::listen(&bind_addr, mk_codec).await {
                 break listener;
             }
 
             let port = bind_addr.port();
-            if port >= u16::MAX {
+            if port == u16::MAX {
                 bail!("failed to bind to any port from `{}` onwards", config_addr);
             }
             bind_addr.set_port(1 + port);
