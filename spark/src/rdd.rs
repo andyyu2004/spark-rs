@@ -8,6 +8,7 @@ pub use parallel_collection::ParallelCollection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
+use std::lazy::SyncOnceCell;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -66,6 +67,12 @@ impl Hash for dyn Rdd {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct RddBase {
+    partitions: tokio::sync::OnceCell<Partitions>,
+    dependencies: SyncOnceCell<Dependencies>,
+}
+
 #[async_trait]
 pub trait Rdd:
     Send
@@ -77,11 +84,22 @@ pub trait Rdd:
 {
     fn id(&self) -> RddId;
 
+    /// Rdds should generally embed a [`RddBase`] to hold common data
+    fn base(&self) -> &RddBase;
+
     fn scx(&self) -> Arc<SparkContext>;
 
-    fn dependencies(&self) -> Dependencies;
+    fn compute_dependencies(&self) -> Dependencies;
 
-    async fn partitions(&self) -> SparkResult<Partitions>;
+    async fn compute_partitions(&self) -> SparkResult<Partitions>;
+
+    fn dependencies(&self) -> Dependencies {
+        Arc::clone(self.base().dependencies.get_or_init(|| self.compute_dependencies()))
+    }
+
+    async fn partitions(&self) -> SparkResult<Partitions> {
+        self.base().partitions.get_or_try_init(|| self.compute_partitions()).await.cloned()
+    }
 
     fn first_parent(&self) -> Arc<Dependency> {
         Arc::clone(self.dependencies().first().expect("`first_parent` called on base rdd"))

@@ -12,6 +12,8 @@ pub struct ParallelCollection<T> {
     rdd_id: RddId,
     partitions: Broadcast<Vec<ParallelCollectionPartition<T>>>,
     partition_indices: Vec<PartitionIdx>,
+    #[serde(skip)]
+    base: RddBase,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,7 +31,13 @@ impl<T: CloneDatum> ParallelCollection<T> {
         let partition_indices = (0..partitions.len()).map(PartitionIdx::new).collect();
         let partitions = scx.broadcast(partitions);
         let rdd_id = scx.next_rdd_id();
-        Self { rdd_id, scx: Arc::downgrade(&scx), partitions, partition_indices }
+        Self {
+            rdd_id,
+            partitions,
+            partition_indices,
+            scx: Arc::downgrade(&scx),
+            base: Default::default(),
+        }
     }
 
     fn partitions_blocking(&self) -> SparkResult<&[ParallelCollectionPartition<T>]> {
@@ -49,15 +57,19 @@ impl<T: CloneDatum> Rdd for ParallelCollection<T> {
         self.rdd_id
     }
 
+    fn base(&self) -> &RddBase {
+        &self.base
+    }
+
     fn scx(&self) -> Arc<SparkContext> {
         self.scx.upgrade().expect("cannot access context remotely")
     }
 
-    fn dependencies(&self) -> Dependencies {
+    fn compute_dependencies(&self) -> Dependencies {
         Default::default()
     }
 
-    async fn partitions(&self) -> SparkResult<Partitions> {
+    async fn compute_partitions(&self) -> SparkResult<Partitions> {
         Ok((0..self.partitions.get().await?.len()).map(PartitionIdx::new).collect())
     }
 }

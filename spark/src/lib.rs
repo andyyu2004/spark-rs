@@ -4,6 +4,7 @@
     exact_size_is_empty,
     new_uninit,
     once_cell,
+    result_cloned,
     trait_alias,
     try_blocks,
     type_name_of_val,

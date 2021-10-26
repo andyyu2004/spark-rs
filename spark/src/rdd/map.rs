@@ -9,13 +9,15 @@ pub struct MapRdd<T: 'static, F> {
     rdd: TypedRddRef<T>,
     deps: Dependencies,
     f: F,
+    #[serde(skip)]
+    base: RddBase,
 }
 
 impl<T: CloneDatum, F> MapRdd<T, F> {
     pub fn new(rdd: TypedRddRef<T>, f: F) -> Self {
         let id = rdd.scx().next_rdd_id();
         let deps = Arc::new(vec![Dependency::new_one_to_one(Arc::clone(&rdd).as_untyped())]);
-        Self { id, rdd, deps, f }
+        Self { id, rdd, deps, f, base: Default::default() }
     }
 }
 
@@ -34,15 +36,19 @@ impl<T: CloneDatum, F: Datum> Rdd for MapRdd<T, F> {
         self.id
     }
 
+    fn base(&self) -> &RddBase {
+        &self.base
+    }
+
     fn scx(&self) -> Arc<SparkContext> {
         self.rdd.scx()
     }
 
-    fn dependencies(&self) -> Dependencies {
+    fn compute_dependencies(&self) -> Dependencies {
         Arc::clone(&self.deps)
     }
 
-    async fn partitions(&self) -> SparkResult<Partitions> {
+    async fn compute_partitions(&self) -> SparkResult<Partitions> {
         self.first_parent().rdd().partitions().await
     }
 }
@@ -78,13 +84,15 @@ pub struct ErasedMapRdd<T: 'static> {
     rdd: TypedRddRef<T>,
     deps: Dependencies,
     f: ErasedMapper<T>,
+    #[serde(skip)]
+    base: RddBase,
 }
 
 impl<T: CloneDatum> ErasedMapRdd<T> {
     pub fn new(rdd: TypedRddRef<T>, f: ErasedMapper<T>) -> Self {
         let id = rdd.scx().next_rdd_id();
         let deps = Arc::new(vec![Dependency::new_one_to_one(Arc::clone(&rdd).as_untyped())]);
-        Self { id, rdd, deps, f }
+        Self { id, rdd, deps, f, base: Default::default() }
     }
 }
 
@@ -103,15 +111,19 @@ impl<T: CloneDatum> Rdd for ErasedMapRdd<T> {
         self.id
     }
 
+    fn base(&self) -> &RddBase {
+        &self.base
+    }
+
     fn scx(&self) -> Arc<SparkContext> {
         self.rdd.scx()
     }
 
-    fn dependencies(&self) -> Dependencies {
+    fn compute_dependencies(&self) -> Dependencies {
         Arc::clone(&self.deps)
     }
 
-    async fn partitions(&self) -> SparkResult<Partitions> {
+    async fn compute_partitions(&self) -> SparkResult<Partitions> {
         self.first_parent().rdd().partitions().await
     }
 }
