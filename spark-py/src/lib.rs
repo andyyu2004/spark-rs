@@ -1,19 +1,13 @@
-#![feature(trait_alias)]
-
-#[macro_use]
-extern crate async_trait;
-
-mod rdd;
 mod serialize;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyFunction, PyList};
+use serde_closure::Fn;
 use serialize::SerdePyObject;
-use spark::rdd::{TypedRdd, TypedRddExt, TypedRddRef};
+use spark::rdd::{ErasedRdd, ErasedRddRef, TypedRddExt};
+use spark::serialize::SerdeArc;
 use spark::{SparkContext, SparkSession};
 use std::sync::Arc;
-
-use self::rdd::PyParallelCollectionRdd;
 
 // Error handling is a bit broken with eyre/anyhow
 // Eyre's pyo3 feature is out of date or something
@@ -32,7 +26,7 @@ macro_rules! unwrap {
 #[pyclass(name = "SparkSession")]
 pub struct PySparkSession {
     #[pyo3(get)]
-    spark_context: PySparkContext,
+    pyspark_context: PySparkContext,
 }
 
 #[pymethods]
@@ -41,7 +35,7 @@ impl PySparkSession {
     pub fn build(py: Python<'_>) -> PyResult<&PyAny> {
         pyo3_asyncio::tokio::future_into_py(py, async move {
             let scx = unwrap!(SparkSession::builder().create().await).scx();
-            let session = PySparkSession { spark_context: PySparkContext { scx } };
+            let session = PySparkSession { pyspark_context: PySparkContext { scx } };
             Python::with_gil(|py| Ok(PyCell::new(py, session)?.to_object(py)))
         })
     }
@@ -62,25 +56,11 @@ impl PySparkContext {
 
 #[pymethods]
 impl PySparkContext {
-    pub fn higher_order_experiment<'py>(
-        &self,
-        py: Python<'py>,
-        _f: &PyFunction,
-    ) -> PyResult<&'py PyAny> {
-        // let x = serde_closure::Fn!(|| f.call0());
-        let rdd = self.scx().parallelize(&[3]);
-
-        pyo3_asyncio::tokio::future_into_py(py, async move {
-            let output = unwrap!(rdd.collect().await);
-            Python::with_gil(|py| Ok(PyList::new(py, output).to_object(py)))
-        })
-    }
-
-    pub fn parallelize(&self, data: Vec<PyObject>) -> PyResult<PyParallelCollectionRdd> {
+    pub fn parallelize(&self, data: Vec<PyObject>) -> PyResult<PyRdd> {
         let serializable_py_objects =
             data.into_iter().map(SerdePyObject).collect::<Vec<SerdePyObject>>();
-        let inner = self.scx().parallelize_iter(serializable_py_objects);
-        Ok(PyParallelCollectionRdd { inner })
+        let inner = self.scx().parallelize_iter(serializable_py_objects).as_erased_ref();
+        Ok(PyRdd { scx: self.clone(), inner })
     }
 
     pub fn collect_rdd<'py>(&self, py: Python<'py>, py_rdd: &PyRdd) -> PyResult<&'py PyAny> {
@@ -96,7 +76,13 @@ impl PySparkContext {
 #[derive(Clone)]
 pub struct PyRdd {
     scx: PySparkContext,
-    inner: TypedRddRef<SerdePyObject>,
+    inner: ErasedRddRef<SerdePyObject>,
+}
+
+impl PyRdd {
+    fn scx(&self) -> PySparkContext {
+        self.scx.clone()
+    }
 }
 
 #[pymethods]
@@ -104,11 +90,23 @@ impl PyRdd {
     pub fn collect<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
         self.scx.collect_rdd(py, self)
     }
+
+    pub fn map<'py>(&self, py: Python<'py>, pyfn: &PyFunction) -> PyResult<Self> {
+        let fn_obj = SerdePyObject(pyfn.to_object(py));
+        let f = Fn!(move |obj: SerdePyObject| Python::with_gil(|py| {
+            let pyfn = fn_obj.0.cast_as::<PyFunction>(py).unwrap();
+            let any = pyfn.call1((obj.0,)).unwrap();
+            SerdePyObject(any.to_object(py))
+        }));
+        let inner = SerdeArc::clone(&self.inner).into_inner().erased_map(Arc::new(f));
+        Ok(Self { scx: self.scx(), inner: inner.as_erased_ref() })
+    }
 }
 
 #[pymodule]
 #[pyo3(name = "pyspark")]
 fn spark(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PySparkSession>()?;
+    m.add_class::<PyRdd>()?;
     Ok(())
 }

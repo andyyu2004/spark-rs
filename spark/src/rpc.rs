@@ -54,6 +54,7 @@ impl SparkDriverRpcServer {
         SparkEnv::get()
     }
 
+    /// TODO move this into a macro (coz I can't figure out the types to make it a function :D)
     /// Starts the server attempting to bind to `config_addr`.
     /// If it is taken it will try consecutive ports (until u16::MAX for now)
     /// and returns the port that was bound.

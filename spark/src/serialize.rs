@@ -17,6 +17,12 @@ impl<Args, T> SerdeFn<Args> for T where
 {
 }
 
+pub trait ErasedSerdeFn<Args>: serde_traitobject::Fn<Args> + Send + Sync + 'static {}
+
+impl<Args, T> ErasedSerdeFn<Args> for T where T: serde_traitobject::Fn<Args> + Send + Sync + 'static
+{
+}
+
 #[macro_export]
 macro_rules! newtype_index {
     ($name:ident) => {

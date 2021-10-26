@@ -3,14 +3,17 @@ mod parallel_collection;
 
 pub use map::MapRdd;
 pub use parallel_collection::ParallelCollection;
+use tracing_subscriber::registry::Data;
 
-use crate::serialize::SerdeArc;
+use crate::serialize::{ErasedSerdeFn, SerdeArc, SerdeFn};
 use crate::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::Arc;
+
+use self::map::ErasedMapRdd;
 
 newtype_index!(RddId);
 
@@ -55,6 +58,7 @@ impl PartialEq for RddRef {
 static_assertions::assert_impl_all!(TypedRddRef<i32>: serde_traitobject::Serialize, serde_traitobject::Deserialize);
 
 pub type TypedRddRef<T> = SerdeArc<dyn TypedRdd<Element = T>>;
+pub type ErasedRddRef<T> = SerdeArc<dyn ErasedRdd<Element = T>>;
 
 impl PartialEq for dyn Rdd {
     fn eq(&self, other: &Self) -> bool {
@@ -133,6 +137,37 @@ pub trait TypedRdd: Rdd {
     {
         Arc::new(MapRdd::new(self.as_typed_ref(), f))
     }
+}
+
+static_assertions::assert_obj_safe!(ErasedRdd<Element = usize>);
+
+pub type ErasedMapper<T> = Arc<dyn ErasedSerdeFn(T) -> T>;
+
+/// Object safe subtrait of `TypedRdd` that includes non-object safe methods of `TypedRdd` at the cost of
+/// certain restrictions and efficiency.
+pub trait ErasedRdd: TypedRdd {
+    /// One strong restriction of `erased_map` is that it cannot map to a different type.
+    fn erased_map(
+        self: Arc<Self>,
+        f: ErasedMapper<Self::Element>,
+    ) -> Arc<ErasedMapRdd<Self::Element>> {
+        Arc::new(ErasedMapRdd::new(self.as_typed_ref(), f))
+    }
+
+    /// Convert concrete [`TypedRdd`] type to a [`ErasedRddRef`]
+    /// Can be implemented as follows
+    /// ```
+    /// ErasedRddRef::from_inner(self as Arc<dyn ErasedRdd<Element = Self::Element>>)
+    /// ```
+    fn as_erased_ref(self: Arc<Self>) -> ErasedRddRef<Self::Element>
+    where
+        Self: Sized,
+    {
+        ErasedRddRef::from_inner(self as Arc<dyn ErasedRdd<Element = Self::Element>>)
+    }
+}
+
+impl<R: TypedRdd> ErasedRdd for R {
 }
 
 #[async_trait]
