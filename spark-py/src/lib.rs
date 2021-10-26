@@ -26,7 +26,7 @@ macro_rules! unwrap {
 #[pyclass(name = "SparkSession")]
 pub struct PySparkSession {
     #[pyo3(get)]
-    pyspark_context: PySparkContext,
+    spark_context: PySparkContext,
 }
 
 #[pymethods]
@@ -35,7 +35,7 @@ impl PySparkSession {
     pub fn build(py: Python<'_>) -> PyResult<&PyAny> {
         pyo3_asyncio::tokio::future_into_py(py, async move {
             let scx = unwrap!(SparkSession::builder().create().await).scx();
-            let session = PySparkSession { pyspark_context: PySparkContext { scx } };
+            let session = PySparkSession { spark_context: PySparkContext { scx } };
             Python::with_gil(|py| Ok(PyCell::new(py, session)?.to_object(py)))
         })
     }
@@ -98,7 +98,7 @@ impl PyRdd {
             let any = pyfn.call1((obj.0,)).unwrap();
             SerdePyObject(any.to_object(py))
         }));
-        let inner = SerdeArc::clone(&self.inner).into_inner().erased_map(Arc::new(f));
+        let inner = SerdeArc::clone(&self.inner).into_inner().erased_map(SerdeArc::new(f));
         Ok(Self { scx: self.scx(), inner: inner.as_erased_ref() })
     }
 }

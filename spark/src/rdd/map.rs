@@ -1,18 +1,21 @@
 use super::*;
 use crate::data::CloneDatum;
+use crate::Dependency;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct MapRdd<T: 'static, F> {
     id: RddId,
     rdd: TypedRddRef<T>,
+    deps: Dependencies,
     f: F,
 }
 
-impl<T, F> MapRdd<T, F> {
+impl<T: CloneDatum, F> MapRdd<T, F> {
     pub fn new(rdd: TypedRddRef<T>, f: F) -> Self {
         let id = rdd.scx().next_rdd_id();
-        Self { id, rdd, f }
+        let deps = Arc::new(vec![Dependency::new_one_to_one(Arc::clone(&rdd).as_untyped())]);
+        Self { id, rdd, deps, f }
     }
 }
 
@@ -36,11 +39,11 @@ impl<T: CloneDatum, F: Datum> Rdd for MapRdd<T, F> {
     }
 
     fn dependencies(&self) -> Dependencies {
-        todo!()
+        Arc::clone(&self.deps)
     }
 
     async fn partitions(&self) -> SparkResult<Partitions> {
-        todo!()
+        self.first_parent().rdd().partitions().await
     }
 }
 
@@ -73,14 +76,15 @@ where
 pub struct ErasedMapRdd<T: 'static> {
     id: RddId,
     rdd: TypedRddRef<T>,
-    #[serde(with = "serde_traitobject")]
+    deps: Dependencies,
     f: ErasedMapper<T>,
 }
 
-impl<T> ErasedMapRdd<T> {
+impl<T: CloneDatum> ErasedMapRdd<T> {
     pub fn new(rdd: TypedRddRef<T>, f: ErasedMapper<T>) -> Self {
         let id = rdd.scx().next_rdd_id();
-        Self { id, rdd, f }
+        let deps = Arc::new(vec![Dependency::new_one_to_one(Arc::clone(&rdd).as_untyped())]);
+        Self { id, rdd, deps, f }
     }
 }
 
@@ -104,11 +108,11 @@ impl<T: CloneDatum> Rdd for ErasedMapRdd<T> {
     }
 
     fn dependencies(&self) -> Dependencies {
-        todo!()
+        Arc::clone(&self.deps)
     }
 
     async fn partitions(&self) -> SparkResult<Partitions> {
-        todo!()
+        self.first_parent().rdd().partitions().await
     }
 }
 

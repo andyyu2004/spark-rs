@@ -1,4 +1,3 @@
-mod event;
 mod job;
 mod stage;
 mod task;
@@ -9,7 +8,6 @@ pub use self::stage::*;
 pub use self::task::*;
 pub use self::task_scheduler::*;
 
-use self::event::*;
 use self::job::*;
 use crate::data::Datum;
 use crate::rdd::{RddRef, TypedRddRef};
@@ -31,7 +29,6 @@ pub struct DagScheduler {
     task_scheduler: Arc<TaskScheduler>,
     job_idx: AtomicUsize,
     stage_idx: AtomicUsize,
-    job_txs: ConcurrentIndexVec<JobId, SchedulerEventSender>,
     stages: ConcurrentIndexVec<StageId, Stage>,
     active_jobs: ConcurrentIndexVec<JobId, ActiveJob>,
     shuffle_id_to_map_stage: ConcurrentIndexVec<ShuffleId, StageId>,
@@ -48,7 +45,6 @@ impl DagScheduler {
     pub fn new(task_scheduler: Arc<TaskScheduler>) -> Self {
         Self {
             task_scheduler,
-            job_txs: Default::default(),
             job_idx: Default::default(),
             stage_idx: Default::default(),
             shuffle_id_to_map_stage: Default::default(),

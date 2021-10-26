@@ -157,7 +157,7 @@ where
             }
             visited.insert(rdd.id());
             for dep in rdd.dependencies().iter() {
-                match dep {
+                match dep.as_ref() {
                     Dependency::Narrow(narrow_dep) => rdds.push(narrow_dep.rdd()),
                     Dependency::Shuffle(shuffle_dep) => {
                         let stage_id = self.create_shuffle_map_stage(stage.job_id, shuffle_dep);

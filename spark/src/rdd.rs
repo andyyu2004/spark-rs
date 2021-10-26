@@ -1,12 +1,10 @@
 mod map;
 mod parallel_collection;
 
+use crate::serialize::{ErasedSerdeFn, SerdeArc};
+use crate::*;
 pub use map::MapRdd;
 pub use parallel_collection::ParallelCollection;
-use tracing_subscriber::registry::Data;
-
-use crate::serialize::{ErasedSerdeFn, SerdeArc, SerdeFn};
-use crate::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -18,23 +16,19 @@ use self::map::ErasedMapRdd;
 newtype_index!(RddId);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RddRef(#[serde(with = "serde_traitobject")] Arc<dyn Rdd>);
+pub struct RddRef(SerdeArc<dyn Rdd>);
 
 impl Deref for RddRef {
     type Target = dyn Rdd;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &**self.0
     }
 }
 
 impl RddRef {
-    pub fn new(rdd: &Arc<dyn Rdd>) -> Self {
-        Self(Arc::clone(rdd))
-    }
-
     pub fn from_inner(rdd: Arc<dyn Rdd>) -> Self {
-        Self(rdd)
+        Self(SerdeArc::from_inner(rdd))
     }
 }
 
@@ -89,11 +83,15 @@ pub trait Rdd:
 
     async fn partitions(&self) -> SparkResult<Partitions>;
 
+    fn first_parent(&self) -> Arc<Dependency> {
+        Arc::clone(self.dependencies().first().expect("`first_parent` called on base rdd"))
+    }
+
     fn immediate_shuffle_dependencies(&self) -> HashSet<ShuffleDependency> {
         let deps = self.dependencies();
         let mut shuffle_deps = HashSet::new();
         for dep in deps.iter() {
-            match dep {
+            match dep.as_ref() {
                 Dependency::Narrow(narrow_dep) =>
                     shuffle_deps.extend(narrow_dep.rdd().immediate_shuffle_dependencies()),
                 Dependency::Shuffle(shuffle_dep) => {
@@ -141,7 +139,7 @@ pub trait TypedRdd: Rdd {
 
 static_assertions::assert_obj_safe!(ErasedRdd<Element = usize>);
 
-pub type ErasedMapper<T> = Arc<dyn ErasedSerdeFn(T) -> T>;
+pub type ErasedMapper<T> = SerdeArc<dyn ErasedSerdeFn(T) -> T>;
 
 /// Object safe subtrait of `TypedRdd` that includes non-object safe methods of `TypedRdd` at the cost of
 /// certain restrictions and efficiency.
