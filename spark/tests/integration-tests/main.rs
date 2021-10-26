@@ -57,7 +57,18 @@ async fn test_map_local() -> SparkResult<()> {
     let rdd = scx.parallelize(&DATA);
     assert_eq!(
         rdd.map(Fn!(|x| x * 2)).collect().await?,
-        *DATA.iter().map(|x| x * 2).collect::<Vec<_>>()
+        *DATA.iter().map(|&x| x * 2).collect::<Vec<u32>>()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_filter_local() -> SparkResult<()> {
+    let (_spark, scx) = new_local().await?;
+    let rdd = scx.parallelize(&DATA);
+    assert_eq!(
+        rdd.filter(Fn!(|&x| x % 2 == 0)).collect().await?,
+        *DATA.iter().copied().filter(|x| x % 2 == 0).collect::<Vec<u32>>()
     );
     Ok(())
 }

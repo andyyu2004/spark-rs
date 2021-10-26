@@ -1,7 +1,8 @@
+mod filter;
 mod map;
 mod parallel_collection;
 
-use crate::serialize::{ErasedSerdeFn, SerdeArc};
+use crate::serialize::{ErasedSerdeFn, SerdeArc, SerdeBox};
 use crate::*;
 pub use map::MapRdd;
 pub use parallel_collection::ParallelCollection;
@@ -12,6 +13,7 @@ use std::lazy::SyncOnceCell;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use self::filter::FilterRdd;
 use self::map::ErasedMapRdd;
 
 newtype_index!(RddId);
@@ -147,6 +149,13 @@ pub trait TypedRdd: Rdd {
         partition: PartitionIdx,
     ) -> SparkResult<SparkIteratorRef<Self::Element>>;
 
+    fn filter<F>(self: Arc<Self>, f: F) -> Arc<FilterRdd<Self::Element, F>>
+    where
+        Self: Sized,
+    {
+        Arc::new(FilterRdd::new(self.as_typed_ref(), f))
+    }
+
     fn map<F>(self: Arc<Self>, f: F) -> Arc<MapRdd<Self::Element, F>>
     where
         Self: Sized,
@@ -157,19 +166,13 @@ pub trait TypedRdd: Rdd {
 
 static_assertions::assert_obj_safe!(ErasedRdd<Element = usize>);
 
-pub type ErasedMapper<T> = SerdeArc<dyn ErasedSerdeFn(T) -> T>;
+// It's worth noting that the `Fn` traits are only implemented on boxed `dyn Fn`s, but not `Arc`ed ones
+pub type ErasedEndoFunction<T> = SerdeBox<dyn ErasedSerdeFn(T) -> T>;
+pub type ErasedPredicate<T> = SerdeBox<dyn ErasedSerdeFn(&T) -> bool>;
 
 /// Object safe subtrait of `TypedRdd` that includes non-object safe methods of `TypedRdd` at the cost of
-/// certain restrictions and efficiency.
+/// certain restrictions and possibly some efficiency.
 pub trait ErasedRdd: TypedRdd {
-    /// One strong restriction of `erased_map` is that it cannot map to a different type.
-    fn erased_map(
-        self: Arc<Self>,
-        f: ErasedMapper<Self::Element>,
-    ) -> Arc<ErasedMapRdd<Self::Element>> {
-        Arc::new(ErasedMapRdd::new(self.as_typed_ref(), f))
-    }
-
     /// Convert concrete [`TypedRdd`] type to a [`ErasedRddRef`]
     /// Can be implemented as follows
     /// ```
@@ -181,9 +184,24 @@ pub trait ErasedRdd: TypedRdd {
     {
         ErasedRddRef::from_inner(self as Arc<dyn ErasedRdd<Element = Self::Element>>)
     }
+
+    /// One strong restriction of `erased_map` is that it cannot map to a different type.
+    fn erased_map(
+        self: Arc<Self>,
+        f: ErasedEndoFunction<Self::Element>,
+    ) -> Arc<ErasedMapRdd<Self::Element>> {
+        Arc::new(ErasedMapRdd::new(self.as_typed_ref(), f))
+    }
+
+    fn erased_filter(
+        self: Arc<Self>,
+        f: ErasedPredicate<Self::Element>,
+    ) -> Arc<FilterRdd<Self::Element, ErasedPredicate<Self::Element>>> {
+        Arc::new(FilterRdd::new(self.as_typed_ref(), f))
+    }
 }
 
-impl<R: TypedRdd> ErasedRdd for R {
+impl<R: TypedRdd + ?Sized> ErasedRdd for R {
 }
 
 #[async_trait]

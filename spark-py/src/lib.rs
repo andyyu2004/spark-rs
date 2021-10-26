@@ -1,11 +1,11 @@
 mod serialize;
 
 use pyo3::prelude::*;
-use pyo3::types::{PyFunction, PyList};
+use pyo3::types::{PyBool, PyFunction, PyList};
 use serde_closure::Fn;
 use serialize::SerdePyObject;
 use spark::rdd::{ErasedRdd, ErasedRddRef, TypedRddExt};
-use spark::serialize::SerdeArc;
+use spark::serialize::{SerdeArc, SerdeBox};
 use spark::{SparkContext, SparkSession};
 use std::sync::Arc;
 
@@ -95,10 +95,21 @@ impl PyRdd {
         let fn_obj = SerdePyObject(pyfn.to_object(py));
         let f = Fn!(move |obj: SerdePyObject| Python::with_gil(|py| {
             let pyfn = fn_obj.0.cast_as::<PyFunction>(py).unwrap();
-            let any = pyfn.call1((obj.0,)).unwrap();
+            let any = unwrap!(pyfn.call1((obj.0,)));
             SerdePyObject(any.to_object(py))
         }));
-        let inner = SerdeArc::clone(&self.inner).into_inner().erased_map(SerdeArc::new(f));
+        let inner = SerdeArc::clone(&self.inner).into_inner().erased_map(SerdeBox::new(f));
+        Ok(Self { scx: self.scx(), inner: inner.as_erased_ref() })
+    }
+
+    pub fn filter<'py>(&self, py: Python<'py>, pyfn: &PyFunction) -> PyResult<Self> {
+        let fn_obj = SerdePyObject(pyfn.to_object(py));
+        let f = Fn!(move |obj: &SerdePyObject| Python::with_gil(|py| {
+            let pyfn = fn_obj.0.cast_as::<PyFunction>(py).unwrap();
+            let any = unwrap!(pyfn.call1((&obj.0,)));
+            unwrap!(any.cast_as::<PyBool>()).is_true()
+        }));
+        let inner = SerdeArc::clone(&self.inner).into_inner().erased_filter(SerdeBox::new(f));
         Ok(Self { scx: self.scx(), inner: inner.as_erased_ref() })
     }
 }

@@ -83,13 +83,13 @@ pub struct ErasedMapRdd<T: 'static> {
     id: RddId,
     rdd: TypedRddRef<T>,
     deps: Dependencies,
-    f: ErasedMapper<T>,
+    f: ErasedEndoFunction<T>,
     #[serde(skip)]
     base: RddBase,
 }
 
 impl<T: CloneDatum> ErasedMapRdd<T> {
-    pub fn new(rdd: TypedRddRef<T>, f: ErasedMapper<T>) -> Self {
+    pub fn new(rdd: TypedRddRef<T>, f: ErasedEndoFunction<T>) -> Self {
         let id = rdd.scx().next_rdd_id();
         let deps = Arc::new(vec![Dependency::new_one_to_one(Arc::clone(&rdd).as_untyped())]);
         Self { id, rdd, deps, f, base: Default::default() }

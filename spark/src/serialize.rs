@@ -2,7 +2,14 @@ pub type SerdeBox<T> = serde_traitobject::Box<T>;
 pub type SerdeArc<T> = serde_traitobject::Arc<T>;
 
 pub trait SerdeFn<Args>:
-    Fn<Args> + Send + Sync + Clone + serde::ser::Serialize + serde::de::DeserializeOwned + 'static
+    Fn<Args>
+    + Send
+    + Sync
+    + Clone
+    + serde::ser::Serialize
+    + serde::de::DeserializeOwned
+    + std::fmt::Debug
+    + 'static
 {
 }
 
@@ -13,13 +20,18 @@ impl<Args, T> SerdeFn<Args> for T where
         + Clone
         + serde::ser::Serialize
         + serde::de::DeserializeOwned
+        + std::fmt::Debug
         + 'static
 {
 }
 
-pub trait ErasedSerdeFn<Args>: serde_traitobject::Fn<Args> + Send + Sync + 'static {}
+pub trait ErasedSerdeFn<Args>:
+    serde_traitobject::Fn<Args> + Send + Sync + std::fmt::Debug + 'static
+{
+}
 
-impl<Args, T> ErasedSerdeFn<Args> for T where T: serde_traitobject::Fn<Args> + Send + Sync + 'static
+impl<Args, T> ErasedSerdeFn<Args> for T where
+    T: serde_traitobject::Fn<Args> + Send + Sync + std::fmt::Debug + 'static
 {
 }
 
