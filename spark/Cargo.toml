@@ -27,11 +27,13 @@ tracing-subscriber = "0.2"
 typetag = "0.1"
 eyre = { version = "0.6.5" }
 spark-ds = { path = "../spark-ds" }
+kube = { version = "0.63.1", features = ["runtime", "derive"] }
+k8s-openapi = { version = "0.13.1", default-features = false, features = ["v1_21"] }
 serde = { version = "1", features = ["derive", "rc"] }
 tarpc = { version = "0.27", features = ["serde-transport", "tcp"] }
 tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "sync", "test-util", "process", "io-util", "parking_lot"] }
 tokio-serde = { version = "0.8", features = ["bincode"] }
-serde_traitobject = { git = "ssh://git@github.com/andyyu2004/serde_traitobject" }
+serde_traitobject = { git = "https://github.com/andyyu2004/serde_traitobject.git" }
 
 [dev-dependencies]
 criterion = { version = "0.3.5", features = ["async", "async_tokio"] }

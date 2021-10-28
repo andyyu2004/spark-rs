@@ -9,8 +9,8 @@ eyre = { version = "0.6.5" }
 pythonize = "0.14"
 serde_closure = "0.3"
 serde = "1"
-serde_traitobject = { git = "ssh://git@github.com/andyyu2004/serde_traitobject" }
 static_assertions = "1"
+serde_traitobject = { git = "https://github.com/andyyu2004/serde_traitobject.git" }
 pyo3-asyncio = { version = "0.14", features = ["attributes", "tokio-runtime"] }
 
 [dependencies.spark]

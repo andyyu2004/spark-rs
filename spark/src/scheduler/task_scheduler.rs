@@ -7,6 +7,14 @@ pub use distributed::DistributedTaskSchedulerBackend;
 use futures::future;
 pub use local::LocalTaskSchedulerBackend;
 
+pub type TaskHandle = tokio::sync::oneshot::Receiver<TaskOutput>;
+pub type TaskSender = tokio::sync::oneshot::Sender<TaskOutput>;
+
+#[async_trait]
+pub trait TaskSchedulerBackend: Send + Sync {
+    async fn run_task(self: Arc<Self>, task: Task) -> SparkResult<TaskHandle>;
+}
+
 pub struct TaskScheduler {
     task_idx: AtomicUsize,
     backend: Arc<dyn TaskSchedulerBackend>,
@@ -44,12 +52,4 @@ impl TaskScheduler {
     pub fn default_parallelism(&self) -> usize {
         num_cpus::get()
     }
-}
-
-pub type TaskHandle = tokio::sync::oneshot::Receiver<TaskOutput>;
-pub type TaskSender = tokio::sync::oneshot::Sender<TaskOutput>;
-
-#[async_trait]
-pub trait TaskSchedulerBackend: Send + Sync {
-    async fn run_task(self: Arc<Self>, task: Task) -> SparkResult<TaskHandle>;
 }
