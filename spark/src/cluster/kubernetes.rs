@@ -13,6 +13,29 @@ impl KubeClusterScheduler {
         let kube_config = kube::Config::new(url.to_string().parse().unwrap());
         let client = kube::Client::try_from(kube_config)?;
         let job_api = Api::<Job>::default_namespaced(client);
+        let patch = json!({
+            "apiVersion": "batch/v1",
+            "kind": "Job",
+            "metadata": {
+                "name": "spark-master"
+            },
+            "spec": {
+                "template": {
+                    "spec": {
+                        "containers": [
+                        {
+                            "name":"test",
+                            "image":"arch-linux"
+                        }
+                        ],
+                        "restartPolicy": "Never"
+                    }
+                },
+                "backoffLimit": 4
+            }
+        });
+        let master_job =
+            job_api.patch("name", &PatchParams::default(), &Patch::Apply(patch)).await?;
         Ok(Arc::new(Self { job_api }))
     }
 

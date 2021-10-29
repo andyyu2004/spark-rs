@@ -3,6 +3,7 @@ members = [
     "spark",
     "spark-ds",
     "spark-py",
+    "spark-shell",
     "spark-start-master",
     "spark-start-worker",
     "spark-submit",

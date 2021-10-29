@@ -2122,6 +2122,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "spark-shell"
+version = "0.1.0"
+dependencies = [
+ "spark",
+]
+
+[[package]]
 name = "spark-start-master"
 version = "0.1.0"
 dependencies = [

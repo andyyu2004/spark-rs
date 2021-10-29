@@ -39,17 +39,16 @@ impl PySparkSession {
 }
 
 #[pyclass(name = "SparkSessionBuilder")]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct PySparkSessionBuilder {
     builder: SparkSessionBuilder,
 }
 
 #[pymethods]
 impl PySparkSessionBuilder {
-    pub fn set_master(&mut self, master_url: &str) -> PyResult<()> {
-        // self.builder = self.builder.master_url(unwrap!(master_url.parse()));
-        todo!();
-        Ok(())
+    pub fn master_url(&mut self, master_url: &str) -> PyResult<PySparkSessionBuilder> {
+        let builder = self.builder.clone().master_url(unwrap!(master_url.parse()));
+        Ok(Self { builder })
     }
 
     pub fn build<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
