@@ -1,6 +1,8 @@
 use crate::broadcast::{Broadcast, BroadcastContext};
-use crate::cluster::{ClusterScheduler, StandaloneClusterScheduler};
-use crate::config::{SparkConfig, TaskSchedulerConfig};
+use crate::cluster::{
+    ClusterScheduler, ClusterSchedulerBackend, KubeClusterScheduler, StandaloneClusterScheduler
+};
+use crate::config::{ClusterUrl, MasterUrl, SparkConfig};
 use crate::data::{CloneDatum, Datum};
 use crate::env::SparkEnv;
 use crate::executor::ExecutorId;
@@ -11,7 +13,7 @@ use crate::*;
 use indexed_vec::Idx;
 use serde::{Deserialize, Serialize};
 use std::lazy::SyncOnceCell;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -45,16 +47,22 @@ impl SparkContext {
             executor_idx: AtomicUsize::new(1),
         });
 
-        let (bind_addr, _) = SparkDriverRpcServer::new(rcx).bind(&config.driver_addr).await?;
+        let driver_addr =
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, DEFAULT_DRIVER_PORT));
+        let (bind_addr, _) = SparkDriverRpcServer::new(rcx).bind(&driver_addr).await?;
 
         let env = SparkEnv::init_for_driver(bind_addr, BroadcastContext::new).await;
 
-        let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match &config.task_scheduler {
-            TaskSchedulerConfig::Local { num_threads } =>
+        let task_scheduler_backend: Arc<dyn TaskSchedulerBackend> = match &config.master_url {
+            MasterUrl::Local { addr: _, num_threads } =>
                 Arc::new(LocalTaskSchedulerBackend::new(*num_threads)),
-            TaskSchedulerConfig::Distributed { url: _ } => {
-                let cluster_scheduler =
-                    ClusterScheduler::new(StandaloneClusterScheduler::new().await?);
+            MasterUrl::Cluster { url } => {
+                let cluster_scheduler_backend = match url {
+                    ClusterUrl::Standalone { num_threads: _ } =>
+                        StandaloneClusterScheduler::new().await? as Arc<dyn ClusterSchedulerBackend>,
+                    ClusterUrl::Kube { url } => KubeClusterScheduler::new(url).await?,
+                };
+                let cluster_scheduler = ClusterScheduler::new(cluster_scheduler_backend);
                 Arc::new(DistributedTaskSchedulerBackend::new(cluster_scheduler, bind_addr))
             }
         };

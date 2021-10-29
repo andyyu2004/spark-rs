@@ -4,9 +4,10 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyFunction, PyList};
 use serde_closure::Fn;
 use serialize::SerdePyObject;
+use spark::config::SparkConfig;
 use spark::rdd::{ErasedRdd, ErasedRddRef, TypedRddExt};
 use spark::serialize::{SerdeArc, SerdeBox};
-use spark::{SparkContext, SparkSession};
+use spark::{SparkContext, SparkSession, SparkSessionBuilder};
 use std::sync::Arc;
 
 // Error handling is a bit broken with eyre/anyhow
@@ -32,9 +33,30 @@ pub struct PySparkSession {
 #[pymethods]
 impl PySparkSession {
     #[staticmethod]
-    pub fn build(py: Python<'_>) -> PyResult<&PyAny> {
+    pub fn builder() -> PySparkSessionBuilder {
+        PySparkSessionBuilder::default()
+    }
+}
+
+#[pyclass(name = "SparkSessionBuilder")]
+#[derive(Default)]
+pub struct PySparkSessionBuilder {
+    builder: SparkSessionBuilder,
+}
+
+#[pymethods]
+impl PySparkSessionBuilder {
+    pub fn set_master(&mut self, master_url: &str) -> PyResult<()> {
+        // self.builder = self.builder.master_url(unwrap!(master_url.parse()));
+        todo!();
+        Ok(())
+    }
+
+    pub fn build<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+        let builder = self.builder.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {
-            let scx = unwrap!(SparkSession::builder().create().await).scx();
+            let spark = unwrap!(builder.create().await);
+            let scx = spark.scx();
             let session = PySparkSession { spark_context: PySparkContext { scx } };
             Python::with_gil(|py| Ok(PyCell::new(py, session)?.to_object(py)))
         })

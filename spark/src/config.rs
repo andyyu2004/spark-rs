@@ -1,54 +1,64 @@
+use crate::cluster::DEFAULT_MASTER_PORT;
 use crate::SparkError;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
+use url::Url;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SparkConfig {
-    pub task_scheduler: TaskSchedulerConfig,
-    pub driver_addr: SocketAddr,
-    pub master_addr: SocketAddr,
+    pub master_url: MasterUrl,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum TaskSchedulerConfig {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MasterUrl {
     /// Run the tasks in the current process.
-    /// This maybe more efficient than distributed local as we don't have to do as '
-    /// much serialization and deserialization
+    /// This maybe more efficient than distributed local as we don't have to do serialization and deserialization
     Local {
+        addr: SocketAddr,
         num_threads: usize,
     },
-    Distributed {
-        url: DistributedUrl,
+    Cluster {
+        url: ClusterUrl,
     },
 }
 
-impl Default for TaskSchedulerConfig {
+impl Default for MasterUrl {
     fn default() -> Self {
-        Self::Local { num_threads: num_cpus::get() }
+        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, DEFAULT_MASTER_PORT));
+        Self::Local { addr, num_threads: num_cpus::get() }
     }
 }
 
-impl FromStr for TaskSchedulerConfig {
+impl FromStr for MasterUrl {
     type Err = SparkError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let url = if s == "local" {
-            TaskSchedulerConfig::Local { num_threads: num_cpus::get() }
-        } else {
-            TaskSchedulerConfig::Distributed {
-                url: DistributedUrl::Local { num_threads: num_cpus::get() },
+        let url = Url::parse(s)?;
+        let cfg = match url.scheme() {
+            "" => MasterUrl::default(),
+            scheme => {
+                let url = match scheme {
+                    "k8s" => ClusterUrl::Kube { url },
+                    _ => bail!("unknown master url scheme: {}", scheme),
+                };
+                MasterUrl::Cluster { url }
             }
         };
-        Ok(url)
+        Ok(cfg)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum DistributedUrl {
-    /// Run the tasks on a new process on the current machine
-    /// This differs from [`MasterUrl::Local`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ClusterUrl {
+    /// Run the tasks on a new process on the current machine.
+    /// This differs from [`MasterUrl::Local`] which runs in the current process.
     /// Not sure what the benefit of this over [`MasterUrl::Local`] is,
     /// it's currently used for testing the distributed framework.
-    Local { num_threads: usize },
+    Standalone {
+        num_threads: usize,
+    },
+    Kube {
+        url: Url,
+    },
 }

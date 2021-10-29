@@ -14,6 +14,7 @@ use tarpc::server::{BaseChannel, Channel};
 use tokio::net::ToSocketAddrs;
 use tokio::task::JoinHandle;
 
+pub use kubernetes::*;
 pub use standalone::*;
 
 pub const DEFAULT_MASTER_PORT: u16 = 8077;
@@ -38,8 +39,8 @@ pub struct ClusterScheduler {
 }
 
 impl ClusterScheduler {
-    pub fn new(backend: Arc<dyn ClusterSchedulerBackend>) -> Self {
-        Self { backend, worker_idx: Default::default() }
+    pub fn new(backend: Arc<dyn ClusterSchedulerBackend>) -> Arc<Self> {
+        Arc::new(Self { backend, worker_idx: Default::default() })
     }
 
     fn next_worker_id(&self) -> WorkerId {

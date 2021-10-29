@@ -15,7 +15,7 @@ use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 pub const TASK_LIMIT: usize = 100;
 
 pub struct DistributedTaskSchedulerBackend {
-    cluster_scheduler: ClusterScheduler,
+    cluster_scheduler: Arc<ClusterScheduler>,
     driver_addr: SocketAddr,
     txs: DashMap<TaskId, TaskSender>,
     task_dispatcher: SyncOnceCell<tokio::sync::mpsc::Sender<Task>>,
@@ -29,7 +29,7 @@ struct ExecutorProcess {
 }
 
 impl DistributedTaskSchedulerBackend {
-    pub fn new(cluster_scheduler: ClusterScheduler, driver_addr: SocketAddr) -> Self {
+    pub fn new(cluster_scheduler: Arc<ClusterScheduler>, driver_addr: SocketAddr) -> Self {
         Self {
             cluster_scheduler,
             driver_addr,

@@ -1,5 +1,5 @@
 use crate::cluster::DEFAULT_MASTER_PORT;
-use crate::config::{SparkConfig, TaskSchedulerConfig};
+use crate::config::{MasterUrl, SparkConfig};
 use crate::{SparkContext, SparkResult};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -20,38 +20,27 @@ impl SparkSession {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SparkSessionBuilder {
-    pub task_scheduler: TaskSchedulerConfig,
-    pub driver_addr: SocketAddr,
-    pub master_addr: SocketAddr,
+    pub master_url: MasterUrl,
 }
 
 impl Default for SparkSessionBuilder {
     fn default() -> Self {
-        Self {
-            task_scheduler: Default::default(),
-            driver_addr: SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::LOCALHOST,
-                DEFAULT_DRIVER_PORT,
-            )),
-            master_addr: SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::LOCALHOST,
-                DEFAULT_MASTER_PORT,
-            )),
-        }
+        Self { master_url: Default::default() }
     }
 }
 
 impl SparkSessionBuilder {
     pub async fn create(self) -> SparkResult<SparkSession> {
-        let Self { task_scheduler, driver_addr, master_addr } = self;
-        let config = SparkConfig { task_scheduler, driver_addr, master_addr };
+        let Self { master_url } = self;
+        let config = SparkConfig { master_url };
         let scx = SparkContext::new(Arc::new(config)).await?;
         Ok(SparkSession { scx })
     }
 
-    pub fn master_url(mut self, master_url: TaskSchedulerConfig) -> Self {
-        self.task_scheduler = master_url;
+    pub fn master_url(mut self, master_url: MasterUrl) -> Self {
+        self.master_url = master_url;
         self
     }
 }

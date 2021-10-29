@@ -4,7 +4,7 @@ mod random;
 
 use indexed_vec::Idx;
 use serde_closure::Fn;
-use spark::config::TaskSchedulerConfig;
+use spark::config::{ClusterUrl, MasterUrl};
 use spark::rdd::{TypedRdd, TypedRddExt, TypedRddRef};
 use spark::scheduler::{JobId, ResultTask, StageId, TaskId, TaskMeta};
 use spark::{PartitionIdx, SparkContext, SparkIteratorRef, SparkResult, SparkSession, TaskContext};
@@ -24,7 +24,7 @@ fn setup_global_subscriber() {
     let _ = tracing_subscriber::registry().with(fmt_layer).with(flame_layer).try_init();
 }
 
-async fn new(master_url: TaskSchedulerConfig) -> SparkResult<(SparkSession, Arc<SparkContext>)> {
+async fn new(master_url: MasterUrl) -> SparkResult<(SparkSession, Arc<SparkContext>)> {
     let _ = tracing_subscriber::fmt::try_init();
     // setup_global_subscriber();
     let session = SparkSession::builder().master_url(master_url).create().await?;
@@ -33,14 +33,11 @@ async fn new(master_url: TaskSchedulerConfig) -> SparkResult<(SparkSession, Arc<
 }
 
 async fn new_local() -> SparkResult<(SparkSession, Arc<SparkContext>)> {
-    new(TaskSchedulerConfig::default()).await
+    new(MasterUrl::default()).await
 }
 
 async fn new_distributed() -> SparkResult<(SparkSession, Arc<SparkContext>)> {
-    new(TaskSchedulerConfig::Distributed {
-        url: spark::config::DistributedUrl::Local { num_threads: num_cpus::get() },
-    })
-    .await
+    new(MasterUrl::Cluster { url: ClusterUrl::Standalone { num_threads: num_cpus::get() } }).await
 }
 
 #[tokio::test]

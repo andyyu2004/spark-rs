@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use futures::executor::block_on;
 use indexed_vec::Idx;
 use serde_closure::Fn;
-use spark::config::TaskSchedulerConfig;
+use spark::config::MasterUrl;
 use spark::rdd::{TypedRdd, TypedRddExt};
 use spark::scheduler::{JobId, ResultTask, StageId, TaskId, TaskMeta};
 use spark::{PartitionIdx, SparkIteratorRef, SparkSession, TaskContext};
@@ -21,8 +21,7 @@ criterion_group!(serialization, bench_serialization);
 pub fn bench_serialization(c: &mut Criterion) {
     c.bench_function("serialize task", move |b| {
         let spark =
-            block_on(SparkSession::builder().master_url(TaskSchedulerConfig::default()).create())
-                .unwrap();
+            block_on(SparkSession::builder().master_url(MasterUrl::default()).create()).unwrap();
 
         let rdd = spark.scx().parallelize(&DATA);
 
@@ -41,8 +40,8 @@ pub fn bench_identity_computation(c: &mut Criterion) {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let spark = block_on(
             SparkSession::builder()
-                .master_url(TaskSchedulerConfig::Distributed {
-                    url: spark::config::DistributedUrl::Local { num_threads: num_cpus::get() },
+                .master_url(MasterUrl::Cluster {
+                    url: spark::config::ClusterUrl::Standalone { num_threads: num_cpus::get() },
                 })
                 .create(),
         )
@@ -52,12 +51,8 @@ pub fn bench_identity_computation(c: &mut Criterion) {
 
     c.bench_function("local identity 1M", move |b| {
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let spark = block_on(
-            SparkSession::builder()
-                .master_url(TaskSchedulerConfig::Local { num_threads: num_cpus::get() })
-                .create(),
-        )
-        .unwrap();
+        let spark =
+            block_on(SparkSession::builder().master_url(MasterUrl::default()).create()).unwrap();
         b.to_async(&runtime).iter(move || spark.scx().parallelize(&DATA).collect())
     });
 }
